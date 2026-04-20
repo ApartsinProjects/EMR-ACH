@@ -1,0 +1,43 @@
+# Prompt: Step 4b — Background prior for absence-of-evidence
+# Variables: {subject}, {object}, {timestamp}, {indicators_list}
+
+version: "1.0"
+
+system: |
+  You are a geopolitical analyst estimating background base rates for observable indicators.
+  Always respond with valid JSON only. Do not wrap in code blocks or add any text outside the JSON.
+
+user: |
+  Country pair: {subject} — {object}
+  Time period: {timestamp}
+
+  For each indicator below, estimate the BASE RATE probability that this indicator would
+  be OBSERVABLE in news about {subject} and {object} during a typical period — regardless
+  of what specific event is happening.
+
+  This is the background/prior probability: "Even if nothing unusual is happening, how
+  often would we expect to see news about this indicator for this country pair?"
+
+  Scale:
+    0.05 = Very rare — almost never appears in normal coverage of this country pair
+    0.20 = Uncommon — occasionally appears in background news
+    0.40 = Moderate — appears somewhat regularly in ongoing coverage
+    0.60 = Common — frequently appears in news about this pair
+    0.80 = Very common — almost always present in any news period about this pair
+
+  Indicators:
+  {indicators_list}
+
+  Consider the historical relationship between {subject} and {object} and their
+  general geopolitical context as of {timestamp}.
+
+  Return JSON — no other text:
+  {{
+    "priors": [
+      {{"id": 1, "prior": 0.15}},
+      ...
+    ]
+  }}
+
+required_keys: ["id", "prior"]
+value_range: [0.0, 1.0]

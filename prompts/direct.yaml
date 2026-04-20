@@ -1,0 +1,31 @@
+# Prompt: Baseline B1 — Direct prompting (no retrieval, no reasoning)
+# Variables: {subject}, {object}, {timestamp}
+
+version: "1.0"
+
+system: |
+  You are an expert geopolitical forecaster.
+  Always respond with valid JSON only. Do not wrap in code blocks or add any text outside the JSON.
+
+user: |
+  Forecasting query: {subject} - {object} ({timestamp})
+
+  Predict the most likely type of interaction between {subject} and {object}
+  around {timestamp}.
+
+  Categories:
+  - VC (Verbal Cooperation): Diplomatic statements, agreements, expressions of support (~50% base rate)
+  - MC (Material Cooperation): Physical aid, joint operations, implemented treaties (~15% base rate)
+  - VK (Verbal Conflict): Accusations, threats, condemnations, diplomatic protests (~25% base rate)
+  - MK (Material Conflict): Military action, sanctions, physical attacks (~10% base rate)
+
+  Based on your knowledge of the bilateral relationship between {subject} and {object}
+  and their specific interactions around {timestamp}, assign probabilities to each category.
+  Probabilities must sum to 1.0. Use the full probability range; do not default to generic values.
+
+  Return JSON - no other text:
+  {{
+    "probabilities": {{"VC": <your_estimate>, "MC": <your_estimate>, "VK": <your_estimate>, "MK": <your_estimate>}},
+    "prediction": "<most_likely_category>",
+    "reasoning": "<one sentence specific to this country pair and date>"
+  }}

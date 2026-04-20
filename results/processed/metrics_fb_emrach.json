@@ -1,0 +1,6 @@
+{
+  "brier_score": 0.292,
+  "ece": 0.24,
+  "accuracy": 40.0,
+  "n": 5
+}

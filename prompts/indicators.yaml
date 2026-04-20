@@ -1,0 +1,57 @@
+# Prompt: Step 1 — Contrastive indicator generation
+# Variables: {subject}, {object}, {timestamp}, {m}, {hypotheses_block}
+
+version: "1.0"
+
+system: |
+  You are an expert geopolitical intelligence analyst specializing in forecasting international events.
+  Your task is to generate observable indicators for a forecasting query.
+  Always respond with valid JSON only. Do not wrap in code blocks or add any text outside the JSON.
+
+user: |
+  Forecasting query: {subject} — {object} ({timestamp})
+
+  You must predict which of the following outcome categories best describes the dominant
+  interaction between these countries in the time period around {timestamp}:
+
+  {hypotheses_block}
+
+  Generate exactly {m} observable indicators — concrete signals that would be visible in
+  news articles and that distinguish between the outcome categories.
+
+  CRITICAL REQUIREMENTS:
+  1. Each indicator must be CONTRASTIVE: it should be much more likely under some hypotheses
+     than others. Indicators consistent with all hypotheses equally are useless.
+  2. Cover all four categories: at least {min_per_hypothesis} indicators that are primarily
+     diagnostic of each category.
+  3. Indicators must be OBSERVABLE in news (e.g., "military units deployed to border" not
+     "country feels threatened").
+  4. For each pair of similar categories (VC vs MC, VK vs MK), include at least 2 indicators
+     that clearly distinguish them.
+
+  Return a JSON array — no other text:
+  [
+    {{
+      "id": 1,
+      "text": "<observable indicator as a noun phrase or short sentence>",
+      "primarily_supports": "<VC|MC|VK|MK>",
+      "distinguishes": "<e.g. VK from VC>"
+    }},
+    ...
+  ]
+
+# Hypotheses block template (filled by code)
+hypotheses_block_template: |
+  - VC (Verbal Cooperation): Diplomatic statements of support, agreements in principle,
+    praise, expressions of solidarity, joint communiques — words without material commitment.
+  - MC (Material Cooperation): Physical aid delivery, treaty ratification, joint military
+    exercises, economic agreements signed and implemented, infrastructure projects.
+  - VK (Verbal Conflict): Official accusations, condemnations, threats, warnings, diplomatic
+    protests, expulsion of ambassadors through official statements.
+  - MK (Material Conflict): Military operations, airstrikes, troop movements, economic
+    sanctions imposed, physical attacks, blockades, expulsion of diplomats.
+
+# Validation: expected keys in each indicator object
+required_keys: ["id", "text", "primarily_supports"]
+valid_primarily_supports: ["VC", "MC", "VK", "MK"]
+expected_count: 24

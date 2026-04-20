@@ -1,0 +1,43 @@
+# Prompt: Step 4 — Indicator presence scoring (analysis matrix A)
+# Variables: {subject}, {object}, {timestamp}, {article_title}, {article_text}, {indicators_list}
+
+version: "1.0"
+
+system: |
+  You are reading news articles and identifying how much evidence each article contains
+  for specific geopolitical indicators.
+  Always respond with valid JSON only. Do not wrap in code blocks or add any text outside the JSON.
+
+user: |
+  Forecasting query: {subject} — {object} ({timestamp})
+
+  Article:
+  Title: {article_title}
+  Text: {article_text}
+
+  For each indicator below, estimate how much direct or indirect evidence for that
+  indicator appears in this article. Score 0.0 to 1.0:
+    0.0 = No evidence — the article does not mention or imply this indicator
+    0.3 = Weak/indirect evidence — vaguely implied or mentioned in passing
+    0.6 = Moderate evidence — clearly mentioned but not the focus
+    0.9 = Strong evidence — the indicator is directly reported as occurring
+
+  Indicators:
+  {indicators_list}
+
+  IMPORTANT:
+  - Score each indicator INDEPENDENTLY based only on what is in this article.
+  - Give 0.0 if the indicator is not mentioned. Do not inflate scores.
+  - Values must be between 0.0 and 1.0 inclusive.
+
+  Return JSON — no other text:
+  {{
+    "article_id": "{article_id}",
+    "scores": [
+      {{"id": 1, "presence": 0.0}},
+      ...
+    ]
+  }}
+
+required_keys: ["id", "presence"]
+value_range: [0.0, 1.0]

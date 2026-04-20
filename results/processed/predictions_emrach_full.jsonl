@@ -1,0 +1,5 @@
+{"query_id": "mock_000", "prediction": "MK", "probabilities": {"VC": 0.15, "MC": 0.3, "VK": 0.2, "MK": 0.35}, "ranking": ["MK", "MC", "VK", "VC"]}
+{"query_id": "mock_001", "prediction": "MK", "probabilities": {"VC": 0.1, "MC": 0.2, "VK": 0.25, "MK": 0.45}, "ranking": ["MK", "VK", "MC", "VC"]}
+{"query_id": "mock_002", "prediction": "MK", "probabilities": {"VC": 0.1, "MC": 0.25, "VK": 0.3, "MK": 0.35}, "ranking": ["MK", "VK", "MC", "VC"]}
+{"query_id": "mock_003", "prediction": "VK", "probabilities": {"VC": 0.15, "MC": 0.25, "VK": 0.3, "MK": 0.3}, "ranking": ["VK", "MK", "MC", "VC"]}
+{"query_id": "mock_004", "prediction": "MC", "probabilities": {"VC": 0.15, "MC": 0.35, "VK": 0.2, "MK": 0.3}, "ranking": ["MC", "MK", "VK", "VC"]}

@@ -1,0 +1,5 @@
+{"query_id": "mock_fb_000", "prob_yes": 0.4, "prediction": "No", "gt": 1, "reasoning": "While tensions remain high, current diplomatic efforts and economic constraints on Russia suggest a lower likelihood of new military operations in the immediate term."}
+{"query_id": "mock_fb_001", "prob_yes": 0.3, "prediction": "No", "gt": 0, "reasoning": "Given the current geopolitical tensions and lack of significant diplomatic progress, it is unlikely that relations will improve significantly by the end of 2024."}
+{"query_id": "mock_fb_002", "prob_yes": 0.4, "prediction": "No", "gt": 0, "reasoning": "Given the historical volatility and current tensions, a sustained ceasefire by the end of 2024 is unlikely."}
+{"query_id": "mock_fb_003", "prob_yes": 0.3, "prediction": "No", "gt": 1, "reasoning": "Current geopolitical tensions and lack of recent diplomatic initiatives suggest a lower likelihood of talks this quarter."}
+{"query_id": "mock_fb_004", "prob_yes": 0.4, "prediction": "No", "gt": 1, "reasoning": "While there are tensions, ongoing diplomatic efforts and economic interests suggest a lower likelihood of new sanctions before year-end."}

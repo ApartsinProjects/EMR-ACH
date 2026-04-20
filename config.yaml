@@ -1,0 +1,64 @@
+# EMR-ACH experiment configuration
+# Override per experiment with --config or environment variables.
+
+model:
+  smoke: "gpt-4o-mini"        # cheap model for prompt debugging
+  experiment: "gpt-4o"        # full-quality model for results
+  temperature: 0.0            # deterministic outputs
+  max_retries: 3
+
+pipeline:
+  m: 24                       # number of indicators to generate
+  n: 10                       # number of articles to retrieve
+  hypotheses: ["VC", "MC", "VK", "MK"]
+
+  # Contrastive indicator generation
+  pairs_per_hypothesis: 2     # min indicators per hypothesis
+  contrastive: true           # use contrastive prompting (vs generic)
+
+  # Platt calibration
+  calibration:
+    enabled: true
+    a: 1.42                   # default; overwritten after fit
+    b: -2.18
+    cv_folds: 5
+
+  # Absence-of-evidence
+  absence_of_evidence: true
+
+  # Deep analysis
+  deep_analysis: true
+
+  # Multi-agent
+  multi_agent:
+    enabled: true
+    n_agents: 4               # Pareto-optimal per paper
+    debate_rounds: 1
+
+retrieval:
+  type: "weaviate"            # "weaviate" | "mock"
+  weaviate_url: "http://localhost:8080"
+  top_k: 10
+  mmr: true
+  mmr_lambda: 0.5
+  rrf: true
+  time_decay_alpha: 0.015     # 30-day half-life
+
+batch:
+  completion_window: "24h"
+  poll_interval_seconds: 60
+  jobs_file: "results/batch_jobs.json"
+
+paths:
+  data_dir: "data"
+  results_dir: "results"
+  prompts_dir: "prompts"
+  mirai_queries: "data/mirai_test_queries.jsonl"
+  mirai_articles: "data/mirai_articles.jsonl"
+  forecastbench_queries: "data/forecastbench_geopolitics.jsonl"
+
+evaluation:
+  bootstrap_n: 1000
+  bootstrap_seed: 42
+  ece_bins: 10
+  significance_alpha: 0.05

@@ -1,0 +1,58 @@
+# Prompt: Step 7 — Deep Analysis (Verbal vs Material disambiguation)
+# Variables: {subject}, {object}, {timestamp}, {article_title}, {article_text}
+
+version: "1.0"
+
+system: |
+  You are classifying news articles according to whether they describe primarily
+  Verbal or Material geopolitical actions.
+  Always respond with valid JSON only. Do not wrap in code blocks or add any text outside the JSON.
+
+user: |
+  Forecasting query: {subject} — {object} ({timestamp})
+
+  Article:
+  Title: {article_title}
+  Text: {article_text}
+
+  Classify this article as one of:
+    "Verbal/High"    — Article clearly and primarily describes verbal actions:
+                       statements, speeches, accusations, negotiations, agreements in
+                       principle, diplomatic protests, condemnations, threats in words.
+    "Verbal/Low"     — Article suggests verbal actions but with ambiguity or low confidence.
+    "Material/High"  — Article clearly and primarily describes material actions:
+                       military movements, airstrikes, sanctions implemented, aid delivered,
+                       physical attacks, blockades, formal treaty signing with implementation.
+    "Material/Low"   — Article suggests material actions but with ambiguity or low confidence.
+    "Uncertain"      — Cannot determine Verbal vs Material from this article, or the article
+                       is not relevant to the {subject}-{object} relationship.
+
+  DECISION RULES:
+  - Classify as "Verbal" if the actions described are primarily through words/statements,
+    even if the statements are about potential material action.
+  - Classify as "Material" only if concrete physical actions are reported as OCCURRING
+    (not just threatened or discussed).
+  - If the article describes both, classify based on the DOMINANT action type.
+  - When uncertain, prefer "Uncertain" over a wrong classification.
+
+  Return JSON — no other text:
+  {{
+    "classification": "Verbal/High",
+    "reasoning": "<one sentence explaining the dominant evidence>"
+  }}
+
+valid_classifications:
+  - "Verbal/High"
+  - "Verbal/Low"
+  - "Material/High"
+  - "Material/Low"
+  - "Uncertain"
+
+# Scoring: High = 1.0 pt, Low = 0.5 pt, Uncertain = 0 pt
+# Category with higher total Verbal/Material score wins
+scoring:
+  Verbal/High: 1.0
+  Verbal/Low: 0.5
+  Material/High: 1.0
+  Material/Low: 0.5
+  Uncertain: 0.0

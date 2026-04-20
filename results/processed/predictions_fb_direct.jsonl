@@ -1,0 +1,5 @@
+{"query_id": "mock_fb_000", "prob_yes": 0.4, "prediction": "No", "gt": 1, "reasoning": "Given the current geopolitical climate and ongoing diplomatic efforts, a new large-scale operation is less likely in the immediate term."}
+{"query_id": "mock_fb_001", "prob_yes": 0.35, "prediction": "No", "gt": 0, "reasoning": "Persistent economic, military, and ideological tensions are likely to continue affecting US-China relations negatively."}
+{"query_id": "mock_fb_002", "prob_yes": 0.4, "prediction": "No", "gt": 0, "reasoning": "The complex geopolitical dynamics and historical patterns of conflict in the region suggest a low likelihood of a lasting ceasefire by the end of 2024."}
+{"query_id": "mock_fb_003", "prob_yes": 0.35, "prediction": "No", "gt": 1, "reasoning": "Ongoing tensions and lack of recent diplomatic progress make talks unlikely this quarter."}
+{"query_id": "mock_fb_004", "prob_yes": 0.4, "prediction": "No", "gt": 1, "reasoning": "Current diplomatic efforts and negotiations are likely to delay new sanctions in the short term."}

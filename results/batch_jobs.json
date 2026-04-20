@@ -1,0 +1,37 @@
+{
+  "emrach_full_indicators_contrastive": {
+    "batch_id": "batch_69e67b635e9081909fcfce6b0a32956c",
+    "job_name": "emrach_full_indicators_contrastive",
+    "status": "completed"
+  },
+  "emrach_full_influence": {
+    "batch_id": "batch_69e67c1a94208190828d04f0e87ecb8f",
+    "job_name": "emrach_full_influence",
+    "status": "completed"
+  },
+  "emrach_full_presence": {
+    "batch_id": "batch_69e67c9ab1288190aa4f46dcb41ae16a",
+    "job_name": "emrach_full_presence",
+    "status": "in_progress"
+  },
+  "emrach_full_background": {
+    "batch_id": "batch_69e67d26cf108190864bc072b172cf18",
+    "job_name": "emrach_full_background",
+    "status": "completed"
+  },
+  "b1_direct": {
+    "batch_id": "batch_69e67d8fafb88190be119b2eb287f942",
+    "job_name": "b1_direct",
+    "status": "validating"
+  },
+  "fb_full_direct": {
+    "batch_id": "batch_69e67d968ea48190b6bc1343f1740041",
+    "job_name": "fb_full_direct",
+    "status": "validating"
+  },
+  "emrach_full_advocates": {
+    "batch_id": "batch_69e67de994c8819082f20702ea0e8703",
+    "job_name": "emrach_full_advocates",
+    "status": "completed"
+  }
+}

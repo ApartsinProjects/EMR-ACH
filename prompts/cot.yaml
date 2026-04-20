@@ -1,0 +1,45 @@
+# Prompt: Baseline B2 — Chain-of-Thought (no retrieval, structured reasoning)
+# Variables: {subject}, {object}, {timestamp}
+
+version: "1.0"
+
+system: |
+  You are an expert geopolitical forecaster who reasons step by step before making predictions.
+  Always respond with valid JSON only. Do not wrap in code blocks or add any text outside the JSON.
+
+user: |
+  Forecasting query: {subject} - {object} ({timestamp})
+
+  Predict the most likely type of interaction between {subject} and {object}
+  around {timestamp}.
+
+  Categories (with typical base rates in international relations):
+  - VC (Verbal Cooperation): Diplomatic statements, agreements, expressions of support (~50%)
+  - MC (Material Cooperation): Physical aid, joint operations, implemented treaties (~15%)
+  - VK (Verbal Conflict): Accusations, threats, condemnations, diplomatic protests (~25%)
+  - MK (Material Conflict): Military action, sanctions, physical attacks, blockades (~10%)
+
+  Note: Most bilateral interactions are cooperative, not conflictual. Only predict VK/MK if
+  there is specific evidence of conflict between THESE TWO countries at this time.
+  Do not let global background conflicts (e.g., ongoing wars elsewhere) bias predictions
+  toward conflict unless {subject} and {object} are direct parties to that conflict.
+
+  Think step by step:
+  STEP 1: What is the general diplomatic relationship between {subject} and {object}?
+  STEP 2: What specific events or interactions occurred between {subject} and {object} around {timestamp}?
+  STEP 3: For each category, what evidence from this specific bilateral relationship supports or contradicts it?
+  STEP 4: Weigh the bilateral evidence (not global context) and assign probabilities.
+
+  Return JSON - no other text:
+  {{
+    "step1_relationship": "<brief assessment of bilateral relationship>",
+    "step2_bilateral_events": "<specific {subject}-{object} interactions around {timestamp}>",
+    "step3_evidence": {{
+      "VC": "<bilateral evidence for/against>",
+      "MC": "<bilateral evidence for/against>",
+      "VK": "<bilateral evidence for/against>",
+      "MK": "<bilateral evidence for/against>"
+    }},
+    "probabilities": {{"VC": <your_estimate>, "MC": <your_estimate>, "VK": <your_estimate>, "MK": <your_estimate>}},
+    "prediction": "<most_likely_category>"
+  }}

@@ -1,0 +1,42 @@
+# Prompt: Step 2 — Influence matrix scoring
+# Variables: {subject}, {object}, {timestamp}, {hypotheses_block}, {indicators_list}
+
+version: "1.0"
+
+system: |
+  You are an expert geopolitical analyst scoring the evidential relationship between
+  observable indicators and outcome hypotheses.
+  Always respond with valid JSON only. Do not wrap in code blocks or add any text outside the JSON.
+
+user: |
+  Forecasting query: {subject} — {object} ({timestamp})
+
+  Outcome hypotheses:
+  {hypotheses_block}
+
+  For each indicator below, score how strongly OBSERVING that indicator as TRUE would
+  support each hypothesis, on a scale of 0.0 to 1.0:
+    0.0 = This indicator is inconsistent with or irrelevant to this hypothesis
+    0.3 = Weak support (indicator is consistent but not particularly informative)
+    0.6 = Moderate support (indicator is noticeably more likely under this hypothesis)
+    0.9 = Strong support (indicator is highly diagnostic of this hypothesis)
+
+  Indicators:
+  {indicators_list}
+
+  IMPORTANT:
+  - Scores should DIFFER across hypotheses — if you give 0.5 to all four, the indicator
+    provides zero discrimination and is useless.
+  - Each indicator should have its highest score for the hypothesis it best supports.
+  - Values must be between 0.0 and 1.0 inclusive.
+
+  Return JSON — no other text:
+  {{
+    "scores": [
+      {{"id": 1, "VC": 0.2, "MC": 0.1, "VK": 0.8, "MK": 0.3}},
+      ...
+    ]
+  }}
+
+required_keys: ["id", "VC", "MC", "VK", "MK"]
+value_range: [0.0, 1.0]
