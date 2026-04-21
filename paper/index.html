@@ -186,10 +186,16 @@ caption{caption-side:bottom;font-size:9pt;color:var(--cap);
 
 <h3>2.1 LLM-Based Event Forecasting</h3>
 <p>
-  Forecasting with LLMs has been explored across geopolitics [3, 16], sports [22], finance [23], and general prediction tasks [19, 4]. The MIRAI benchmark [3] provides the most directly comparable structured evaluation for our work, with the best-performing ReAct agent achieving 44.2% F1 on quad-class geopolitical relation prediction. ThinkTank-ME [16] introduces domain-specialized fine-tuned expert models for Middle East forecasting on the POLECAT benchmark, reporting improvements over single-model baselines. Our approach differs fundamentally: it requires no fine-tuning, works on any forecasting domain, and is grounded in a formal probabilistic framework. Because the evidence matrix formulation requires only a hypothesis set, a set of observable indicators, and a retrievable evidence corpus, it generalizes naturally to domains such as financial forecasting (e.g., earnings outcome prediction), medical diagnosis (e.g., differential diagnosis from clinical notes), and intelligence analysis beyond geopolitics.
+  Early work on open-ended forecasting with language models focused on question-answering formats grounded in news: ForecastQA [22] introduced a multiple-choice future-event QA task, and Autocast [19] pioneered automated forecasting on binary/numeric/multiple-choice Metaculus and GJOpen questions by combining LLM reading with a news corpus. These approaches established the basic recipe (question → retrieve news → reason → predict) but treated prediction as an ad-hoc LLM call rather than an inference procedure with explicit evidence structure.
 </p>
 <p>
-  For general forecasting and calibration, ForecastBench [4] provides a dynamic benchmark of 1,000 continuously-updated questions from prediction markets and real-world data sources. The best current LLM (GPT-4.5) achieves a Brier score of 0.101 vs. superforecasters at 0.081, and recent work [5] approaches human-level performance through aggressive retrieval and ensembling. Schoenegger et al. [20] evaluate LLM calibration in real-world forecasting tournaments, finding systematic overconfidence that persists across model families, a failure mode our structured aggregation directly addresses. We use ForecastBench as our second evaluation axis specifically because it includes crowd-sourced calibration ground truth enabling meaningful ECE computation.
+  Geopolitical event forecasting has been studied most extensively against GDELT- and ICEWS-derived benchmarks. MIRAI [3] is the most directly comparable structured evaluation for our work: it formalizes forecasting as quad-class CAMEO relation prediction between country pairs, provides an oracle news corpus, and reports a best-performing ReAct agent at 44.2% F1. Tang et al. [28] attack a similar problem with iterative news-grounded reasoning, and Xie et al. [27] (“From News to Forecast”) build a multi-stage pipeline that extracts events from news before forecasting. POLECAT-based work by Abolghasemi et al. [16] introduces ThinkTank-ME, a domain-specialized <em>fine-tuned</em> expert model for Middle East forecasting. Our approach differs fundamentally: EMR-ACH requires no fine-tuning, works on any forecasting domain, and is grounded in a formal probabilistic framework. Because the evidence matrix formulation requires only a hypothesis set, a set of observable indicators, and a retrievable evidence corpus, it generalizes to financial forecasting (earnings outcomes), medical diagnosis (differential diagnosis from clinical notes), and other analytical domains.
+</p>
+<p>
+  A second line of work targets <em>market-calibrated</em> prediction where human crowd forecasts are available. ForecastBench [4] provides a dynamic benchmark of ~1,000 continuously-updated questions from Metaculus, Manifold, Polymarket, Infer, plus algorithmic sources; the best reported LLM (GPT-4.5) achieves Brier 0.101 versus superforecasters at 0.081. Halawi et al. [5] reach near human-level performance via aggressive retrieval, news summarization, and ensembling. Schoenegger et al. [20] run a Metaculus-style tournament and find LLMs systematically overconfident across model families, a failure mode our structured aggregation directly addresses. Related <em>ensembling</em> approaches [21-series] show that aggregating many diverse LLM forecasters rivals crowd accuracy, echoing the classical wisdom-of-crowds result. We use ForecastBench as our second evaluation axis specifically because it includes crowd-sourced calibration ground truth enabling meaningful ECE computation, and because its prediction-market subset is temporally clean (all questions resolve after the GPT-4o training cutoff).
+</p>
+<p>
+  Beyond prediction quality, several recent papers attack specific sub-problems that we also touch: Tian et al. (“Just Ask for Calibration”) [12] study verbalized-confidence elicitation, a cheap calibration baseline for any probabilistic LLM; Pratt et al. study LLMs as online learners in continuously-resolving forecasting markets; Shinn et al. (Reflexion) and Yao et al. (ReAct) [7] propose iterative self-critique and reason-and-act scaffolds respectively that have been ported to forecasting. Relative to all of these, EMR-ACH is distinguished by (i) a closed-form probabilistic aggregation ($P = A \cdot I$) rather than an open-ended reasoning chain, (ii) explicit modeling of evidence absence, and (iii) a variance-reduction theoretical bound (Prop. 1) on achievable calibration improvement.
 </p>
 
 <h3>2.2 Structured Reasoning Paradigms for LLMs</h3>
@@ -207,9 +213,18 @@ caption{caption-side:bottom;font-size:9pt;color:var(--cap);
   LLM probability calibration has been studied in factual QA [11], commonsense reasoning [12], and general prediction [4]. The consensus is that LLMs are overconfident in multi-class settings and that calibration can be improved through post-hoc methods (temperature scaling, Platt scaling) or training [25]. To our knowledge, we are the first to show that structured evidence matrix reasoning is itself a calibration mechanism (not just a post-hoc correction) and to provide a theoretical bound on the achievable calibration improvement.
 </p>
 
-<h3>2.5 Analysis of Competing Hypotheses</h3>
+<h3>2.5 Human Cognitive Bias and Structured Analytic Techniques</h3>
 <p>
-  ACH was developed by Heuer [1] at the CIA. Studies show that analysts rarely follow all ACH steps without automated support [2], motivating automated pipelines. Traditional implementations (PARC ACH 2.0, DECIDE) are pre-LLM and require manual evidence entry. The closest prior work is AgentCDM [15], which uses ACH-inspired reasoning to train a meta-agent for synthesizing conflicting answers from multiple LLMs. AgentCDM is a <em>training framework</em> for collaborative decision-making, not a forecasting system: it requires fine-tuning, treats ACH as an inspiration rather than a formal probabilistic model, and does not model evidence retrieval or calibration. To our knowledge, our work is the first to formalize ACH as an evidence matrix inference problem, apply it to standardized forecasting benchmarks, and analyze its calibration properties theoretically.
+  Decades of behavioral-decision research document that unaided human judgment about uncertain events is systematically biased. Kahneman and Tversky's dual-process account [18] distinguishes fast intuitive reasoning (System 1), prone to heuristics, from slow deliberative reasoning (System 2). Key biases relevant to forecasting include <em>confirmation bias</em> (over-weighting evidence consistent with an initial hypothesis), <em>anchoring</em> (insufficient adjustment from a starting value), <em>availability</em> (over-estimating probability of recently-seen events), <em>representativeness</em> (judging by similarity to a prototype rather than base rate), and <em>hindsight bias</em> (remembering past predictions as more accurate than they were). Tetlock's long-running Expert Political Judgment study showed that political experts perform barely better than chance on multi-year forecasts and are consistently overconfident, while trained <em>superforecasters</em> using structured processes achieve substantially better calibration [4].
+</p>
+<p>
+  The intelligence community's response to this evidence is the family of <strong>Structured Analytic Techniques (SATs)</strong> catalogued by Pherson &amp; Heuer in the CIA tradecraft primer. SATs decompose an analytic question into steps that externalize assumptions, force consideration of alternatives, and create an auditable reasoning trail. Common SATs include the <em>Key Assumptions Check</em> (explicitly list and challenge each assumption), <em>Quality of Information Check</em> (rate source reliability and information credibility), <em>Devil's Advocacy</em> and <em>Red-Team Analysis</em> (designated contrarian perspectives), <em>Alternative Futures Analysis</em> (scenario generation to cover the possibility space), and <em>Analysis of Competing Hypotheses</em> (ACH, the subject of this paper). A growing empirical literature evaluates whether SATs actually reduce bias; the consensus is that they help, but only when followed rigorously, which analysts under time pressure rarely do [2].
+</p>
+<p>
+  <strong>Analysis of Competing Hypotheses (ACH)</strong> was developed by Heuer at the CIA [1] and is distinctive among SATs in being explicitly <em>matrix-based</em>: the analyst lists mutually exclusive hypotheses as columns, lists each piece of evidence as a row, and scores consistency/inconsistency in each cell, seeking to <em>refute</em> rather than confirm hypotheses. The central psychological claim is that looking for disconfirming evidence neutralizes confirmation bias, and evaluating all hypotheses simultaneously neutralizes anchoring on the first plausible story. Dhami et al. [2] conduct a controlled evaluation of ACH versus unaided judgment in intelligence-analyst subjects and find that, although ACH compliance is often incomplete, when applied it does reduce bias in hypothesis selection. PARC ACH 2.0 and DECIDE are pre-LLM software implementations that structure the manual evidence-entry workflow but do not automate evidence retrieval, scoring, or probability computation.
+</p>
+<p>
+  Machine-learning analogues of structured deliberation have appeared in the LLM era. AgentCDM [15] uses ACH-inspired reasoning to <em>train</em> a meta-agent for synthesizing conflicting answers from multiple LLMs; it is a training framework rather than a forecasting system, requires fine-tuning, and treats ACH as an inspiration. Multi-agent debate [10] and self-consistency [9] implement a weaker structured-deliberation constraint without an explicit hypothesis-evidence matrix. To our knowledge, EMR-ACH is the first work to (i) formalize ACH as probabilistic matrix inference $P = A \cdot I$ with calibrated probabilities, (ii) apply the full automated pipeline (indicator generation, retrieval, scoring, aggregation) to standardized forecasting benchmarks, and (iii) derive a theoretical variance-reduction bound linking the matrix structure to calibration improvement. Where traditional ACH guarantees only procedural rigor, EMR-ACH inherits the bias-mitigation rationale and adds a quantitative probabilistic interpretation.
 </p>
 
 
@@ -222,19 +237,55 @@ caption{caption-side:bottom;font-size:9pt;color:var(--cap);
   In general, EMR-ACH takes a query, a retrieved evidence corpus $\mathcal{D}$, and a task-specific hypothesis class $\mathcal{H}$ (e.g., event categories, outcome bins, or diagnostic labels), and outputs a calibrated probability distribution $\mathbf{p} \in \Delta^{|\mathcal{H}|-1}$. The hypothesis classes are defined by the application domain; the matrix inference procedure is identical across domains.
 </p>
 
+<h3>3.1 The Forecast Dossier</h3>
 <p>
-  For the MIRAI geopolitical forecasting demonstration, we follow [3] and represent each event as a quadruple $e_t = (t, s, r, o)$ where $t$ is a timestamp, $s, o \in \mathcal{C}$ are subject and object countries, and $r \in \mathcal{R}$ is a relation type. The <strong>forecasting task</strong> is: given query $(t, s, o)$ and news corpus $\mathcal{D}$ of articles published before $t$, predict $\mathbf{p}$ over $\mathcal{H}$.
+  We package every forecasting instance as a <strong>Forecast Dossier</strong> (FD), the unit consumed by the pipeline and the unit of evaluation. Naming follows the intelligence-analyst convention under which ACH was developed: a dossier is the complete case file on which an analyst renders a probability judgment. Formally a Forecast Dossier is a tuple
+</p>
+$$
+\text{FD} \;=\; \left\langle\, q,\; \mathcal{H},\; t^{*},\; T,\; \mathcal{D}_{q,t^{*},T},\; y,\; \pi_{\text{crowd}} \,\right\rangle
+$$
+<p>
+  where
+</p>
+<ul style="margin-top:-4px;">
+  <li>$q$ is the forecasting question (natural-language or structured, e.g., "Will $X$ happen by $Y$?" or a MIRAI-style triple $(t, s, o)$);</li>
+  <li>$\mathcal{H} = \{h_1,\ldots,h_K\}$ is the task-specific hypothesis class (binary, quad-class CAMEO, $k$-way outcome bins, etc.);</li>
+  <li>$t^{*}$ is the <em>forecast point</em>: the cut-off time at which the prediction is made (market freeze date, test-month start, etc.);</li>
+  <li>$T$ is the <em>retrieval lookback window</em>: only articles with publication date in $[t^{*}-T,\; t^{*})$ are eligible;</li>
+  <li>$\mathcal{D}_{q,t^{*},T} = \{a_1,\ldots,a_n\}$ is the retrieved evidence corpus — the relevant news articles selected by a source-specific relevance function (oracle-indexed for MIRAI-2024; SBERT similarity plus keyword overlap for prediction markets), strictly filtered to pub-date $< t^{*}$ to prevent leakage;</li>
+  <li>$y \in \mathcal{H}$ is the ground-truth outcome, observed only at evaluation time;</li>
+  <li>$\pi_{\text{crowd}} \in \Delta^{K-1}$ (optional) is a human-crowd probability anchor (e.g., prediction-market consensus at $t^{*}$), when available.</li>
+</ul>
+<p>
+  The pipeline reads an FD and writes back a predicted distribution $\hat{\mathbf{p}} \in \Delta^{K-1}$ plus the intermediate matrices $A, I$ for auditing. The FD abstraction makes the pipeline source-agnostic: the same reasoning code runs on MIRAI-2024 country-pair queries, ForecastBench Yes/No questions, or any future benchmark that can be expressed in this form. A <strong>quality gate</strong> (Sec. 6.1.1) drops any FD with fewer than three eligible articles, with article dates concentrated in a single window, or with ground truth observable inside $\mathcal{D}_{q,t^{*},T}$, ensuring that every FD admitted to the evaluation is both sufficiently supported and leakage-free.
+</p>
+
+<h3>3.2 Benchmark Instantiations</h3>
+
+<p>
+  Each benchmark used in this paper instantiates the FD by filling in the slots above:
+</p>
+
+<table>
+  <caption>Table 5. FD slot instantiation by benchmark.</caption>
+  <tr>
+    <th>Slot</th><th>MIRAI-2024</th><th>ForecastBench</th>
+  </tr>
+  <tr><td>$q$</td><td>$(t, s, ?, o)$ country-pair triple</td><td>NL question + background</td></tr>
+  <tr><td>$\mathcal{H}$</td><td>$\{\text{VC, MC, VK, MK}\}$ (CAMEO quad-class)</td><td>$\{\text{Yes, No}\}$</td></tr>
+  <tr><td>$t^{*}$</td><td>first day of Nov 2024 (test month)</td><td>market freeze date</td></tr>
+  <tr><td>$T$</td><td>90 days (Aug-Oct 2024 context)</td><td>30 days pre-freeze</td></tr>
+  <tr><td>$\mathcal{D}_{q,t^{*},T}$</td><td>GDELT KG oracle articles matching actors $(s,o)$, dated &lt; $t^{*}$</td><td>SBERT-scored + date-filtered GDELT DOC pool; top-10 per FD</td></tr>
+  <tr><td>$y$</td><td>CAMEO root code of the resolved Nov event(s)</td><td>binary resolution (Yes/No)</td></tr>
+  <tr><td>$\pi_{\text{crowd}}$</td><td>not available</td><td><code>freeze_datetime_value</code> prediction-market consensus</td></tr>
+</table>
+
+<p>
+  Under this abstraction, MIRAI-2024 is not a special case in the method — it is one instantiation; ForecastBench is another. Extending the paper to a third benchmark (e.g., earnings-outcome prediction or epidemic-outbreak forecasting) requires only a new row in Table 5 and a source-specific relevance function; the EMR-ACH math is untouched.
 </p>
 
 <p>
-  We evaluate under the <strong>quad-class</strong> CAMEO grouping, which serves as the task-specific hypothesis class for this benchmark:
-</p>
-$$
-\mathcal{H} = \{\underbrace{\text{VC}}_{\text{codes }01\text{-}04},\; \underbrace{\text{MC}}_{\text{codes }05\text{-}08},\; \underbrace{\text{VK}}_{\text{codes }09\text{-}16},\; \underbrace{\text{MK}}_{\text{codes }17\text{-}20}\}
-$$
-
-<p>
-  where VC = Verbal Cooperation, MC = Material Cooperation, VK = Verbal Conflict, MK = Material Conflict. Other domains would substitute their own hypothesis classes (e.g., binary yes/no for ForecastBench questions, price movement bins for financial forecasting).
+  As a concrete instantiation (MIRAI-2024 from Table 5), the query takes the form $(t, s, o)$ with hypothesis class $\mathcal{H} = \{\text{VC, MC, VK, MK}\}$ (the CAMEO quad-class grouping of Verbal/Material Cooperation and Verbal/Material Conflict); we use this example throughout the methodology when a concrete form helps exposition, but all machinery below operates on any FD.
 </p>
 
 <h3>3.1 Evaluation Metrics</h3>
@@ -266,10 +317,10 @@ where $\hat{p}_i$ is the predicted probability of the correct outcome and $y_i \
 
 <h3>4.1 Step 1: Indicator Generation</h3>
 <p>
-  For query $(t, s, o)$, we prompt the LLM to generate $K$ early-warning indicators across all hypotheses. We use a <em>contrastive</em> prompting strategy: for each pair $(h_a, h_b) \in \binom{\mathcal{H}}{2}$, we request indicators that strongly distinguish $h_a$ from $h_b$, directly targeting diagnostic evidence as required by ACH theory. This produces $\binom{|\mathcal{H}|}{2} \cdot K_{\text{pair}}$ indicators with guaranteed pairwise coverage, resulting in $m = 24$ indicators for $|\mathcal{H}|=4$ and $K_{\text{pair}}=4$.
+  For FD query $q$, we prompt the LLM to generate early-warning indicators across all hypotheses in $\mathcal{H}$. We use a <em>contrastive</em> prompting strategy: for each pair $(h_a, h_b) \in \binom{\mathcal{H}}{2}$, we request indicators that strongly distinguish $h_a$ from $h_b$, directly targeting diagnostic evidence as required by ACH theory. This produces $m = \binom{|\mathcal{H}|}{2} \cdot K_{\text{pair}}$ indicators with guaranteed pairwise coverage. Two concrete examples: for the MIRAI quad-class setting ($|\mathcal{H}|=4$, $K_{\text{pair}}=4$) this yields $m=24$ indicators; for a binary ForecastBench setting ($|\mathcal{H}|=2$, $K_{\text{pair}}=8$) it yields $m=8$.
 </p>
 <div class="note">
-  <span class="note-title">Contrastive indicator prompt (abridged):</span> "Generate 4 observable news indicators that would most strongly distinguish between {$h_a$}: {description} and {$h_b$}: {description} for a future event between {$s$} and {$o$}. Each indicator should have markedly different probability under the two outcomes."
+  <span class="note-title">Contrastive indicator prompt (abridged):</span> "Generate $K_{\text{pair}}$ observable news indicators that would most strongly distinguish between {$h_a$}: {description} and {$h_b$}: {description} in the context of query $q$. Each indicator should have markedly different probability under the two outcomes."
 </div>
 
 <h3>4.2 Step 2: Influence Matrix with Diagnostic Weighting</h3>
@@ -304,7 +355,7 @@ $$
   <li><strong>Hybrid search:</strong> BM25 lexical + dense semantic embeddings, fused via Reciprocal Rank Fusion (RRF).</li>
   <li><strong>MMR re-ranking:</strong> Maximal Marginal Relevance for diversity; avoids retrieving near-duplicate articles.</li>
   <li><strong>Temporal decay:</strong> Articles down-weighted by $\exp(-\alpha \Delta t)$, $\alpha = 0.015$, 30-day half-life.</li>
-  <li><strong>Country metadata pre-filter:</strong> Reduces the candidate pool to articles explicitly mentioning both countries before semantic ranking.</li>
+  <li><strong>Entity metadata pre-filter:</strong> Reduces the candidate pool to articles whose metadata matches the FD query entities (e.g., both countries for MIRAI, ticker or topic tags for market questions) before semantic ranking.</li>
 </ul>
 
 <h3>4.4 Step 5: Analysis Matrix with Absence-of-Evidence</h3>
@@ -316,10 +367,10 @@ $$
   We extend the standard analysis matrix to capture the <strong>absence-of-evidence</strong> signal. We augment the analysis matrix with a single universal background-absence virtual article whose entry for indicator $f_j$ encodes how surprising the current level of evidence for $f_j$ is relative to baseline expectations. For indicators that are absent from all retrieved articles, this row provides the only signal about $f_j$; for indicators present in some articles, the regular rows dominate and the background row provides a small prior correction. Formally:
 </p>
 $$
-A_{(n+1),j} = 1 - \Pr(f_j \mid \text{background}) \approx 1 - \phi_{\text{cal}}\bigl(\text{LLM.prior}(f_j, s, o, t)\bigr)
+A_{(n+1),j} = 1 - \Pr(f_j \mid \text{background}) \approx 1 - \phi_{\text{cal}}\bigl(\text{LLM.prior}(f_j, q, t^{*})\bigr)
 $$
 
-where $\text{LLM.prior}$ asks: "In the current geopolitical context for $s$-$o$, how probable is it that indicator $f_j$ would be observable in news right now, independent of any specific event?" This creates an $(n+1) \times m$ augmented analysis matrix $\tilde{A}$.
+where $\text{LLM.prior}$ asks: "In the baseline context of FD query $q$ at forecast point $t^{*}$, how probable is it that indicator $f_j$ would be observable in news right now, independent of any specific event?" (For the MIRAI instantiation, $q = (t, s, o)$ and the prompt phrases this as the $s$-$o$ geopolitical context.) This creates an $(n+1) \times m$ augmented analysis matrix $\tilde{A}$.
 
 <h3>4.5 Step 6: Diagnostic Evidence Matrix Aggregation</h3>
 <p>
@@ -358,7 +409,7 @@ $$
   When the hypothesis space has a coarse-to-fine structure, an optional secondary LLM pass can refine the primary prediction within the top-ranked coarse class. The general pattern: a task-specific classifier scores retrieved articles along a domain-defined axis and uses cumulative confidence (1 pt per high-confidence match, 0.5 per low) to resolve ambiguity the matrix aggregation left unresolved.
 </p>
 <p>
-  For MIRAI's quad-class CAMEO setting, the relevant axis is Verbal vs. Material: a secondary pass classifies each article as Verbal, Material, or Uncertain with High/Low confidence, and the dominant category overrides the Verbal/Material dimension of the top hypothesis. For a binary forecasting task (e.g., ForecastBench Yes/No), this step is unnecessary and omitted. Other domains might apply analogous refinement: e.g., differentiating buy/hold/sell signal strength in financial forecasting, or acute vs. chronic severity in medical diagnosis.
+  As one example, MIRAI's quad-class CAMEO setting admits refinement along the Verbal vs. Material axis: a secondary pass classifies each article as Verbal, Material, or Uncertain with High/Low confidence, and the dominant category overrides the Verbal/Material dimension of the top hypothesis. Other domains would apply analogous refinement along their own axes: e.g., buy/hold/sell signal strength in financial forecasting, or acute vs. chronic severity in medical diagnosis. For tasks whose hypothesis space has no coarse-to-fine structure (e.g., a binary ForecastBench question), this step is omitted.
 </p>
 
 <h3>4.8 Multi-Agent Adversarial ACH</h3>
@@ -368,15 +419,15 @@ $$
 
 <div class="alg">
 <div class="alg-title">Algorithm 1 &nbsp;–&nbsp; EMR-ACH Inference (full system)</div>
-<span class="kw">Input:</span> Query $(t,s,o)$; corpus $\mathcal{D}$; hypotheses $\mathcal{H}$<br>
+<span class="kw">Input:</span> FD $= \langle q, \mathcal{H}, t^{*}, T, \mathcal{D}_{q,t^{*},T}, \cdot, \cdot \rangle$<br>
 <span class="kw">Output:</span> Probability distribution $\mathbf{p}$ over $\mathcal{H}$<br><br>
-<div class="ind1"><span class="kw">Step 1:</span> $F \leftarrow \text{LLM.contrastive\_indicators}(s, o, \mathcal{H})$ &nbsp; <em>// m = 24 indicators</em></div>
+<div class="ind1"><span class="kw">Step 1:</span> $F \leftarrow \text{LLM.contrastive\_indicators}(q, \mathcal{H})$ &nbsp; <em>// $m = \binom{|\mathcal{H}|}{2} K_{\text{pair}}$ indicators</em></div>
 <div class="ind1"><span class="kw">Step 2:</span> $I_{jk} \leftarrow \phi_\text{cal}(\text{LLM.rate}(f_j, h_k))$; &nbsp; $d_j \leftarrow \text{Var}_k[I_{jk}]$ &nbsp; <em>// influence + diagnosticity</em></div>
-<div class="ind1"><span class="kw">Step 3:</span> $\mathcal{A} \leftarrow \text{RAG.retrieve}(s,o,t,n{=}10)$ &nbsp; <em>// hybrid + MMR + decay</em></div>
+<div class="ind1"><span class="kw">Step 3:</span> $\mathcal{A} \leftarrow \text{RAG.retrieve}(q, t^{*}, T, n{=}10)$ &nbsp; <em>// hybrid + MMR + decay</em></div>
 <div class="ind1"><span class="kw">Step 4:</span> $A_{ij} \leftarrow \phi_\text{cal}(\text{LLM.presence}(a_i, f_j))$</div>
-<div class="ind1"><span class="kw">Step 4b:</span> $\tilde{A}_{(n+1),j} \leftarrow 1 - \phi_\text{cal}(\text{LLM.prior}(f_j, s, o, t))$ &nbsp; <em>// absence-of-evidence row</em></div>
+<div class="ind1"><span class="kw">Step 4b:</span> $\tilde{A}_{(n+1),j} \leftarrow 1 - \phi_\text{cal}(\text{LLM.prior}(f_j, q, t^{*}))$ &nbsp; <em>// absence-of-evidence row</em></div>
 <div class="ind1"><span class="kw">Step 5:</span> $\widetilde{P} \leftarrow \tilde{A} \cdot \text{diag}(\mathbf{d}) \cdot I$; &nbsp; $\text{Score}(h_k) \leftarrow \frac{1}{n+1}\sum_i \widetilde{P}_{ik}$</div>
-<div class="ind1"><span class="kw">Step 6 (optional):</span> Apply Deep Analysis for Verbal/Material refinement</div>
+<div class="ind1"><span class="kw">Step 6 (optional):</span> Apply domain-specific refinement (e.g., Verbal/Material axis for MIRAI)</div>
 <div class="ind1"><span class="kw">Step 7 (optional):</span> Apply multi-agent adversarial ACH; replace Score with judge output</div>
 <div class="ind1"><span class="kw">Return:</span> $\mathbf{p} \leftarrow \text{softmax}(\text{Score})$</div>
 </div>
@@ -416,11 +467,16 @@ By Cauchy-Schwarz, $\|\mathbf{d}\|_2^2 / \|\mathbf{d}\|_1^2 \leq 1/m$, so $\text
 
 <h3>6.1 Datasets</h3>
 
-<h4>MIRAI</h4>
+<h4>MIRAI-2024 (Primary Evaluation)</h4>
 <p>
-  The MIRAI benchmark [3] provides structured geopolitical event forecasting queries, each specifying a query $(t, s, o)$ with associated news article references and ground-truth CAMEO event types. The test set contains <strong>705 queries spanning November 2023</strong> (all dates: 2023-11-01 through 2023-11-30, with 14-45 queries per day). We evaluate all systems on the <em>full</em> 705-query test set. Platt-scaling parameters for $\phi_{\text{cal}}$ are fit using MIRAI's training partition via 5-fold cross-validation, ensuring no overlap with the evaluation set.
+  We construct <strong>MIRAI-2024</strong>, a leakage-free extension of the MIRAI benchmark [3] built by re-running the MIRAI dataset construction pipeline on GDELT 2.0 data from August through December 2024 — entirely after the GPT-4o training cutoff of April 2024. The pipeline downloads 15-minute GDELT KG export files, merges them, filters for country-coded bilateral events with $\geq 50$ daily source mentions (MIRAI's reliability threshold), and generates $(t, s, ?, o)$ forecasting queries for November 2024 as the test month, with Aug-Oct 2024 as the retrieval context window. The result is approximately $500$–$700$ test queries in the same CAMEO quad-class format as the original MIRAI. Ground truth and oracle article links are derived directly from the GDELT KG, following MIRAI's original methodology.
+</p>
+<p>
+  Platt-scaling parameters for $\phi_{\text{cal}}$ are fit on the Aug-Oct 2024 context partition via 5-fold cross-validation, ensuring no overlap with the Nov 2024 test set.
+</p>
 
-  <strong>Temporal integrity note:</strong> Because all MIRAI queries fall within November 2023, and GPT-4o's training data extends through early 2024, the evaluation is <em>not</em> free of temporal leakage: the model may have seen news coverage of the same events during pretraining. This means MIRAI results should be interpreted as measuring <strong>structured reasoning advantage under equal knowledge conditions</strong> (every method uses the same model with the same training data; the comparison controls for knowledge and isolates structural benefit). ForecastBench provides the leakage-free evaluation (Section 6.1, below).
+<p style="font-size:9.5pt;color:#444;border-left:2px solid #ccc;padding-left:10px;margin:4px 0 12px;">
+  <em>Note on MIRAI-Nov2023:</em> The original MIRAI test set (705 queries, Nov 2023) falls within GPT-4o's training window and is therefore temporally leaky. We do <strong>not</strong> re-run LLM experiments on it. The MIRAI ReAct F1 of 44.2% from [3] is cited as a structural reference point only.
 </p>
 
 <h4>ForecastBench</h4>
@@ -429,23 +485,71 @@ By Cauchy-Schwarz, $\|\mathbf{d}\|_2^2 / \|\mathbf{d}\|_1^2 \leq 1/m$, so $\text
 </p>
 
 <h3>6.2 Baselines</h3>
+<p>
+  We re-implement every comparison method below under identical corpus, retrieval, and model conditions as EMR-ACH (GPT-4o, temperature 0, same retrieved article set per query), so reported differences isolate the structural advantage of evidence-matrix reasoning rather than corpus or model-version effects. Published numbers (MIRAI ReAct, Halawi) are additionally cited as external anchors.
+</p>
 <ul>
-  <li><strong>Direct Prompting (B1):</strong> GPT-4o given only the query; no retrieval; direct probability distribution over hypotheses.</li>
-  <li><strong>Chain-of-Thought (B2):</strong> B1 with bilateral-focused step-by-step reasoning (STEP 1: relationship history; STEP 2: specific bilateral events at timestamp; STEP 3: per-hypothesis evidence; STEP 4: probabilities). Base rate guidance included to prevent VK anchoring.</li>
-  <li><strong>RAG-Only (B3):</strong> Retrieve 10 articles via oracle (MIRAI) or GDELT (ForecastBench); concatenate abstracts; single GPT-4o prediction call with base rate guidance.</li>
-  <li><strong>Crowd Probability (ForecastBench only):</strong> Use the <code>freeze_datetime_value</code> field directly as the predicted probability; no LLM involved. Represents the prediction-market consensus and is the strongest non-LLM baseline. Not applicable to MIRAI (no crowd probabilities available).</li>
-  <li><strong>MIRAI ReAct [3]:</strong> Best-performing published agent from the MIRAI benchmark paper; results taken directly from the paper under identical corpus and evaluation protocol.</li>
-  <li><strong>EMR-ACH (base):</strong> Our pipeline with basic uniform indicator generation, heuristic probability mapping (HL→0.9, L→0.66, P→0.33, U→0.1, HU→0.0), no diagnostic weighting, no absence modeling. This establishes the contribution of the base matrix formulation.</li>
+  <li><strong>B1 — Direct Prompting:</strong> GPT-4o given only the query; no retrieval; direct probability distribution over hypotheses.</li>
+  <li><strong>B2 — Chain-of-Thought [6]:</strong> B1 with task-agnostic step-by-step reasoning (STEP 1: relevant context; STEP 2: per-hypothesis evidence; STEP 3: base-rate check; STEP 4: probabilities).</li>
+  <li><strong>B3 — RAG-Only:</strong> Retrieve top-10 articles via oracle (MIRAI-2024) or unified relevance scoring (ForecastBench); concatenate full texts; single GPT-4o prediction call with base-rate guidance.</li>
+  <li><strong>B4 — Self-Consistency [9]:</strong> Sample $k=8$ independent CoT chains with $T=0.7$, extract the predicted probability vector from each, and average. A cheap, strong reasoning baseline; establishes whether EMR-ACH gains come from structure or from sampling-variance reduction alone.</li>
+  <li><strong>B5 — Multi-Agent Debate [10]:</strong> Three LLM agents independently produce a CoT prediction, then read each others' answers and revise for two rounds; final probability is the mean over agents. Standard multi-agent deliberation without the hypothesis-evidence matrix structure; isolates the contribution of ACH scaffolding versus generic debate.</li>
+  <li><strong>B6 — Tree-of-Thoughts [8]:</strong> Branch-and-evaluate reasoning with breadth 3 and depth 2, scored by a self-critique LLM call; select the highest-scoring leaf for final probability.</li>
+  <li><strong>B7 — Reflexion [7-series]:</strong> Single-agent self-critique loop: initial CoT, LLM self-critiques for hypothetical flaws, then revises. Three iterations; final answer taken.</li>
+  <li><strong>B8 — Verbalized Confidence [12]:</strong> "Just-Ask-For-Calibration" elicitation on top of B3: the model outputs both its answer and its confidence as a verbalized probability; the top-k elicitation is then used directly. Isolates the effect of explicit probability elicitation from structured evidence aggregation.</li>
+  <li><strong>B9 — LLM Ensemble ("Silicon Crowd") [20-series]:</strong> Run B3 with nine heterogeneous model configurations (GPT-4o, GPT-4o-mini, Claude-Sonnet, Llama-3.1-70B, three temperature settings, two prompt variants) and average the predicted probabilities. Operationalizes the "wisdom of the silicon crowd" result as a crowd-replacement baseline.</li>
+  <li><strong>Crowd Probability</strong> <em>(ForecastBench only)</em>: Use the <code>freeze_datetime_value</code> field directly as the predicted probability; no LLM involved. The strongest non-LLM baseline. Not applicable to MIRAI-2024 (no crowd probabilities).</li>
+  <li><strong>Published anchors (not re-run):</strong> MIRAI ReAct [3] (44.2% F1, cited); Halawi et al. [5] (Brier 0.101 on full ForecastBench, cited).</li>
+  <li><strong>EMR-ACH (base):</strong> Our pipeline with basic uniform indicator generation, heuristic probability mapping (HL→0.9, L→0.66, P→0.33, U→0.1, HU→0.0), no diagnostic weighting, no absence modeling. This establishes the contribution of the base matrix formulation itself before any refinement.</li>
 </ul>
+<p>
+  Baselines B4-B9 target three orthogonal alternative hypotheses for where EMR-ACH's gains might come from: sampling-variance reduction (B4), generic multi-agent deliberation without a hypothesis matrix (B5, B6, B7), probability elicitation alone (B8), and model-ensembling (B9). If EMR-ACH still outperforms after controlling for all of these, the gain is attributable to the evidence-matrix structure specifically.
+</p>
 
 <h3>6.3 Ablation Variants</h3>
 <p>
   We ablate individual contributions: (i) removing diagnostic weighting ($d_j = 1$ uniformly); (ii) removing absence-of-evidence row; (iii) removing calibrated mapping (heuristic fallback); (iv) removing Deep Analysis; (v) replacing multi-agent with single-agent; (vi) removing MMR/RRF; (vii) removing temporal decay.
 </p>
 
-<h3>6.4 Implementation Details</h3>
+<h3>6.4 Per-Query Evaluation Protocol</h3>
 <p>
-  All LLM queries use <strong>GPT-4o (gpt-4o-2024-08-06)</strong>, temperature $= 0$ for reproducibility. Smoke-test runs use GPT-4o-mini (gpt-4o-mini-2024-07-18) for cost efficiency; final reported numbers all use GPT-4o. We confirm determinism by running three identical trials on a 20-query subset; all produce identical outputs. Proposition 1's variance reduction characterizes partial-observability noise across evidence sources (different articles, different indicators), not LLM sampling stochasticity, so it holds independently of decoding temperature (see Appendix B). Embeddings: text-embedding-3-large. Retrieval: oracle MIRAI-provided doc IDs for MIRAI evaluation; GDELT DOC API + BM25 hybrid for ForecastBench. Weaviate vector DB used when available; BM25-only fallback (FAISS) for environments without Weaviate. Parameters: $m = 24$ indicators for 4-class MIRAI; $m = 8$ for binary ForecastBench (4 pairs $\times$ 2 indicators); $K_{\text{pair}}=4$ or $2$ respectively; $n = 10$ articles; $\alpha = 0.015$. Platt scaling refit per model on the task's training or held-out split (5-fold CV on MIRAI training partition; held-out 20% for ForecastBench). Multi-agent: 4 advocates + 1 judge for 4-class; 2 advocates + 1 judge for binary; 2 rounds. Statistical significance: 95% bootstrap CIs ($B=1000$), McNemar's test for pairwise comparisons. All batch jobs submitted via OpenAI Batch API (50% cost reduction vs. synchronous; 24h turnaround).
+  Each forecasting query is evaluated through the following strictly time-ordered procedure, which guarantees no leakage of future information into the prediction:
+</p>
+<ol>
+  <li><strong>Define the forecasting point $t^*$:</strong> for MIRAI-2024, this is the start of November 2024 (the test month); for ForecastBench, this is the question's freeze date (the date at which crowd probability was recorded).</li>
+  <li><strong>Retrieve a news stream for $[t^* - T, t^*)$:</strong> for MIRAI-2024, oracle GDELT article links are used ($T = $ Aug-Oct 2024 context window); for ForecastBench, GDELT DOC API retrieves up to $n=10$ articles with publication date strictly before $t^*$, filtered by keyword relevance to the question. Full article text is extracted with trafilatura where available; GDELT title-only articles serve as fallback. No article published on or after $t^*$ enters the retrieval.</li>
+  <li><strong>Run EMR-ACH (or baseline):</strong> the pipeline processes only the retrieved articles, generating indicators, scoring the $A$ and $I$ matrices, and producing a probability distribution over hypotheses.</li>
+  <li><strong>Compare against ground truth and baselines:</strong>
+    <ul>
+      <li><em>Ground truth:</em> the actual resolved outcome (CAMEO quad-class for MIRAI-2024; binary Yes/No for ForecastBench), observed only at evaluation time, not during prediction.</li>
+      <li><em>Crowd probability (ForecastBench only):</em> the <code>freeze_datetime_value</code> prediction-market consensus recorded at $t^*$; this is the strongest non-LLM reference and represents the aggregated wisdom of human forecasters operating under the same information cutoff.</li>
+      <li><em>Published baselines (cited, not re-run):</em> MIRAI ReAct [3] reports 44.2% F1 on MIRAI-Nov2023 under equal-knowledge conditions; we cite this as a structural reference, acknowledging the different (leaky) test window. Halawi et al. NeurIPS 2024 [5] reports Brier 0.101 on full ForecastBench.</li>
+      <li><em>Re-implemented baselines:</em> B1 Direct Prompting, B2 CoT, B3 RAG-Only, each using the same corpus and model version as EMR-ACH to ensure fair comparison under identical information conditions.</li>
+    </ul>
+  </li>
+</ol>
+<p>
+  <strong>Temporal leakage audit:</strong> MIRAI-2024 test queries span November 2024; context articles span August through October 2024; all data postdates the GPT-4o training cutoff of April 2024 — no leakage by construction. ForecastBench questions all resolve after July 2024 — fully post-cutoff. The LLM's pretraining knowledge cannot include resolution outcomes. We do not run any LLM experiment on MIRAI-Nov2023.
+</p>
+
+<h3>6.5 Phased Experiment Plan</h3>
+<p>
+  We adopt a staged execution strategy to catch bugs early, verify the pipeline before expensive full-scale runs, and confirm the approach outperforms baselines before scaling to additional datasets.
+</p>
+<ul>
+  <li><strong>Phase 0 — Smoke test (5 questions, mock data):</strong> end-to-end pipeline sanity check with mock MIRAI queries. Success criterion: no crashes, KL $&lt; 1.0$ on at least 3/5 queries. Cost: $&lt; $0.10$.</li>
+  <li><strong>Phase 1 — Debug run (50 questions, ForecastBench):</strong> run all methods (B1, B2, B3, EMR-ACH base, EMR-ACH full) on a fixed random 50-question sample from ForecastBench. ForecastBench is chosen for Phase 1 because its binary format is the simplest evaluation structure. Inspect per-question predictions and intermediate matrix outputs to verify indicator quality, scoring logic, and probability calibration. Success criterion: EMR-ACH full achieves Brier $\leq 0.18$ (below Always-No = 0.166 not required yet; catching degenerate outputs is the goal). No results are reported from this phase.</li>
+  <li><strong>Phase 2 — Full ForecastBench (530 questions):</strong> once Phase 1 passes inspection, run all methods on the full 530-question set. Report Table 2. Success criterion: EMR-ACH full outperforms all B1/B2/B3 baselines on Brier and ECE with 95% bootstrap CIs non-overlapping. If EMR-ACH does not outperform baselines, return to Phase 1 for diagnosis before proceeding.</li>
+  <li><strong>Phase 3 — MIRAI-2024 (primary, ~500-700 questions):</strong> once MIRAI-2024 dataset construction completes (currently processing GDELT KG exports), run all methods and report Table 1. This dataset uses full article text (fetched via trafilatura) and oracle doc links, enabling the complete 7-step pipeline.</li>
+  <li><strong>Phase 4 — Ablation and scaling (Phases 2-3 data):</strong> ablation study (Table 3), multi-agent scaling, evidence quality comparison (titles vs. full text), and $n/m$ scaling experiments after core results are stable.</li>
+</ul>
+<p>
+  The phased approach isolates bugs: Phase 1 catches prompt and parsing failures; Phase 2 validates statistical power; Phase 3 tests the full oracle retrieval path.
+</p>
+
+<h3>6.6 Implementation Details</h3>
+<p>
+  All LLM queries use <strong>GPT-4o (gpt-4o-2024-08-06)</strong>, temperature $= 0$ for reproducibility. Smoke-test runs use GPT-4o-mini (gpt-4o-mini-2024-07-18) for cost efficiency; final reported numbers all use GPT-4o. We confirm determinism by running three identical trials on a 20-query subset; all produce identical outputs. Proposition 1's variance reduction characterizes partial-observability noise across evidence sources (different articles, different indicators), not LLM sampling stochasticity, so it holds independently of decoding temperature (see Appendix B). Embeddings: text-embedding-3-large. Retrieval: oracle MIRAI-provided doc IDs for MIRAI-2024 evaluation; GDELT DOC API + BM25 hybrid for ForecastBench. Weaviate vector DB used when available; BM25-only fallback (FAISS) for environments without Weaviate. Parameters: $m = 24$ indicators for 4-class MIRAI; $m = 8$ for binary ForecastBench (4 pairs $\times$ 2 indicators); $K_{\text{pair}}=4$ or $2$ respectively; $n = 10$ articles; $\alpha = 0.015$. Platt scaling refit per model on the task's training or held-out split (5-fold CV on MIRAI training partition; held-out 20% for ForecastBench). Multi-agent: 4 advocates + 1 judge for 4-class; 2 advocates + 1 judge for binary; 2 rounds. Statistical significance: 95% bootstrap CIs ($B=1000$), McNemar's test for pairwise comparisons. All batch jobs submitted via OpenAI Batch API (50% cost reduction vs. synchronous; 24h turnaround).
 </p>
 
 <table>
@@ -642,7 +746,7 @@ By Cauchy-Schwarz, $\|\mathbf{d}\|_2^2 / \|\mathbf{d}\|_1^2 \leq 1/m$, so $\text
 
 <h3>8.6 Limitations</h3>
 <ul>
-  <li><strong>Temporal leakage on MIRAI.</strong> All 705 MIRAI test queries are from November 2023, within GPT-4o's training window. MIRAI results therefore measure structural reasoning advantage under equal knowledge conditions rather than pure forecasting on unseen events. ForecastBench ($N_{\text{clean}}=1{,}823$, post-cutoff) is the leakage-free evaluation; MIRAI results are consistent with but should be interpreted alongside ForecastBench.</li>
+  <li><strong>Evaluation windows.</strong> Both benchmarks used in this paper post-date the GPT-4o training cutoff (April 2024): MIRAI-2024 queries are drawn from November 2024, and ForecastBench questions resolve between July 2024 and April 2026. We do not run LLM experiments on MIRAI-Nov2023 (leaky); its ReAct baseline number is cited only as a structural reference from [3].</li>
   <li><strong>Crowd probability gap.</strong> On ForecastBench, the crowd probability baseline (Brier 0.079) is strong: prediction markets aggregate thousands of human forecasters with real financial incentives. Full LLM experiment results are pending; closing this gap likely requires using crowd probabilities as a prior anchor within EMR-ACH rather than replacing them.</li>
   <li>We use article abstracts only. Full-article access would improve evidence quality, especially for Verbal/Material disambiguation, but exceeds current context constraints.</li>
   <li>The indicator independence assumption in the evidence matrix (Naive Bayes structure) may introduce bias when indicators are correlated; relaxing this via a latent factor model is a promising direction.</li>

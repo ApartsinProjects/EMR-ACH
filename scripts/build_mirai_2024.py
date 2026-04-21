@@ -165,7 +165,8 @@ def step1_download(raw_dir: Path):
 
 # ── Step 2: Merge + clean ──────────────────────────────────────────────────
 
-def step2_clean(raw_dir: Path, tmp_dir: Path, iso2country: dict, cameo2name: dict):
+def step2_clean(raw_dir: Path, tmp_dir: Path, iso2country: dict, cameo2name: dict,
+                batch_size: int = 200):
     tmp_dir.mkdir(parents=True, exist_ok=True)
     out_path = tmp_dir / "kg_cleaned.csv"
     if out_path.exists():
@@ -173,61 +174,151 @@ def step2_clean(raw_dir: Path, tmp_dir: Path, iso2country: dict, cameo2name: dic
         return
 
     csv_files = sorted(raw_dir.glob("*.CSV"))
-    print(f"Step 2: merging {len(csv_files)} CSV files...")
+    print(f"Step 2: streaming {len(csv_files)} CSV files in batches of {batch_size}...",
+          flush=True)
 
-    dfs = []
-    for f in tqdm(csv_files, unit="file"):
+    # Intermediate file with per-file filters applied (no global URL dedup yet).
+    stage_path = tmp_dir / "kg_stage.csv"
+    if stage_path.exists():
+        stage_path.unlink()
+
+    iso_set   = set(iso2country.keys())
+    cameo_set = set(cameo2name.keys())
+
+    out_cols = COL_NAMES + [
+        "NewsDate", "Actor1CountryName", "Actor2CountryName",
+        "RelName", "DateStr", "QuadEventCode",
+    ]
+
+    total_raw = 0
+    total_stage = 0
+    seen_event_ids: set[str] = set()
+    header_written = False
+
+    def filter_one(df: pd.DataFrame) -> pd.DataFrame:
+        """Apply all non-global filters to a single file's DataFrame."""
+        # same-date filter: event date == news date
+        news_date = df["DATEADDED"].str[:8]
+        m = df["Day"] == news_date
+        # country filter
+        a1 = df["Actor1CountryCode"]
+        a2 = df["Actor2CountryCode"]
+        m &= a1.notna() & a2.notna()
+        m &= a1.isin(iso_set)
+        m &= a2.isin(iso_set)
+        m &= a1 != a2
+        # CAMEO
+        m &= df["EventRootCode"] != "--"
+        m &= df["EventBaseCode"].isin(cameo_set)
+        df = df[m].copy()
+        if len(df) == 0:
+            return df
+        df["NewsDate"] = df["DATEADDED"].str[:8]
+        return df
+
+    def flush_batch(batch_dfs: list[pd.DataFrame], batch_idx: int):
+        nonlocal total_stage, header_written
+        if not batch_dfs:
+            return
+        df = pd.concat(batch_dfs, ignore_index=True)
+        # global dedup by GlobalEventID
+        df = df.drop_duplicates(subset="GlobalEventID")
+        mask = ~df["GlobalEventID"].isin(seen_event_ids)
+        df = df[mask]
+        seen_event_ids.update(df["GlobalEventID"].tolist())
+        if len(df) == 0:
+            print(f"  batch {batch_idx}: 0 rows kept", flush=True)
+            return
+        df["Actor1CountryName"] = df["Actor1CountryCode"].map(iso2country)
+        df["Actor2CountryName"] = df["Actor2CountryCode"].map(iso2country)
+        df["RelName"] = df["EventBaseCode"].map(cameo2name)
+        df["DateStr"] = pd.to_datetime(df["Day"], format="%Y%m%d", errors="coerce").dt.strftime("%Y-%m-%d")
+        df["QuadEventCode"] = (
+            df["DateStr"] + "_" + df["Actor1CountryCode"] + "_" +
+            df["Actor2CountryCode"] + "_" + df["EventBaseCode"]
+        )
+        df = df[out_cols]
+        df.to_csv(stage_path, mode="a", index=False, sep="\t",
+                  header=not header_written)
+        header_written = True
+        total_stage += len(df)
+        print(f"  batch {batch_idx}: kept {len(df)} rows "
+              f"(cum raw={total_raw}, cum stage={total_stage})", flush=True)
+
+    batch_dfs: list[pd.DataFrame] = []
+    files_in_batch = 0
+    batch_idx = 0
+    for i, f in enumerate(tqdm(csv_files, unit="file")):
         try:
             df = pd.read_csv(f, sep="\t", header=None, dtype=str, low_memory=False)
         except Exception:
             continue
         if len(df.columns) != 61:
             continue
-        dfs.append(df)
+        df.columns = COL_NAMES
+        total_raw += len(df)
+        df = filter_one(df)
+        if len(df) > 0:
+            batch_dfs.append(df)
+        files_in_batch += 1
+        if files_in_batch >= batch_size:
+            batch_idx += 1
+            flush_batch(batch_dfs, batch_idx)
+            batch_dfs = []
+            files_in_batch = 0
 
-    if not dfs:
-        print("[ERROR] No valid CSV files found.")
+    if batch_dfs or files_in_batch > 0:
+        batch_idx += 1
+        flush_batch(batch_dfs, batch_idx)
+
+    if not stage_path.exists():
+        print("[ERROR] No valid CSV files produced any rows.")
         return
 
-    df = pd.concat(dfs, ignore_index=True)
-    df.columns = COL_NAMES
-    df.drop_duplicates(subset="GlobalEventID", inplace=True)
-    print(f"  Raw rows: {len(df)}")
+    print(f"  Raw rows: {total_raw}", flush=True)
+    print(f"  After per-file filters: {total_stage}", flush=True)
 
-    # same-date filter: event date == news date
-    df["NewsDate"] = df["DATEADDED"].str[:8]
-    df = df[df["Day"] == df["NewsDate"]]
-
-    # URL dedup: keep earliest occurrence of each URL
+    # URL dedup pass: find earliest NewsDate per SOURCEURL via chunked scan.
+    print("Step 2: URL dedup pass (chunked)...", flush=True)
     url_first_date: dict[str, str] = {}
-    for url, nd in zip(df["SOURCEURL"], df["NewsDate"]):
-        if url not in url_first_date or nd < url_first_date[url]:
-            url_first_date[url] = nd
-    df["URLDay"] = df["SOURCEURL"].map(url_first_date)
-    df = df[df["NewsDate"] == df["URLDay"]]
+    for chunk in pd.read_csv(stage_path, sep="\t", dtype=str,
+                             usecols=["SOURCEURL", "NewsDate"],
+                             chunksize=50000, low_memory=False):
+        for url, nd in zip(chunk["SOURCEURL"].values, chunk["NewsDate"].values):
+            if not isinstance(url, str):
+                continue
+            prev = url_first_date.get(url)
+            if prev is None or (isinstance(nd, str) and nd < prev):
+                url_first_date[url] = nd if isinstance(nd, str) else ""
+    print(f"  unique URLs: {len(url_first_date)}", flush=True)
 
-    # country filter
-    df = df[df[["Actor1CountryCode", "Actor2CountryCode"]].notnull().all(axis=1)]
-    df = df[df["Actor1CountryCode"].isin(iso2country)]
-    df = df[df["Actor2CountryCode"].isin(iso2country)]
-    df = df[df["Actor1CountryCode"] != df["Actor2CountryCode"]]
+    # Second pass: write final kg_cleaned.csv with rows where NewsDate == URLDay.
+    header_written = False
+    kept = 0
+    chunk_no = 0
+    for chunk in pd.read_csv(stage_path, sep="\t", dtype=str,
+                             chunksize=50000, low_memory=False):
+        chunk_no += 1
+        chunk["URLDay"] = chunk["SOURCEURL"].map(url_first_date)
+        chunk = chunk[chunk["NewsDate"] == chunk["URLDay"]]
+        chunk = chunk.drop(columns=["URLDay"])
+        if len(chunk) == 0:
+            continue
+        chunk.to_csv(out_path, mode="a", index=False, sep="\t",
+                     header=not header_written)
+        header_written = True
+        kept += len(chunk)
+        print(f"  dedup chunk {chunk_no}: wrote {len(chunk)} "
+              f"(cum cleaned={kept})", flush=True)
 
-    # CAMEO code filter
-    df = df[df["EventRootCode"] != "--"]
-    df = df[df["EventBaseCode"].isin(cameo2name)]
+    # Cleanup stage file
+    try:
+        stage_path.unlink()
+    except Exception:
+        pass
 
-    # enrich
-    df["Actor1CountryName"] = df["Actor1CountryCode"].map(iso2country)
-    df["Actor2CountryName"] = df["Actor2CountryCode"].map(iso2country)
-    df["RelName"] = df["EventBaseCode"].map(cameo2name)
-    df["DateStr"]  = pd.to_datetime(df["Day"], format="%Y%m%d", errors="coerce").dt.strftime("%Y-%m-%d")
-    df["QuadEventCode"] = (
-        df["DateStr"] + "_" + df["Actor1CountryCode"] + "_" +
-        df["Actor2CountryCode"] + "_" + df["EventBaseCode"]
-    )
-
-    df.to_csv(out_path, index=False, sep="\t")
-    print(f"Step 2 done: {len(df)} rows -> {out_path}")
+    print(f"  Cleaned rows: {kept}", flush=True)
+    print(f"Step 2 done: {kept} rows -> {out_path}", flush=True)
 
 
 # ── Step 3: Filter by source reliability ─────────────────────────────────────

@@ -1,0 +1,31 @@
+{
+  "n_filtered_fds": 311,
+  "n_articles_pool": 1163,
+  "leakage_violations": 0,
+  "per_source_counts": {
+    "manifold": 30,
+    "metaculus": 47,
+    "infer": 14,
+    "polymarket": 220
+  },
+  "ground_truth": {
+    "forecastbench": {
+      "No": 271,
+      "Yes": 40
+    }
+  },
+  "articles_per_fd_histogram": {
+    "3": 22,
+    "9": 36,
+    "7": 28,
+    "4": 22,
+    "8": 25,
+    "5": 18,
+    "10": 143,
+    "6": 17
+  },
+  "median_day_spread": 12,
+  "median_chars": 110116,
+  "crowd_n": 311,
+  "crowd_mean": 0.1626073954983923
+}

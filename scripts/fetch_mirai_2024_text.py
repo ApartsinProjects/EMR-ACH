@@ -63,6 +63,9 @@ def main():
     parser.add_argument("--n", type=int, default=None)
     parser.add_argument("--all", action="store_true")
     parser.add_argument("--workers", type=int, default=12)
+    parser.add_argument("--only-referenced", action="store_true",
+                        help="Only fetch URLs whose art_id is referenced by a MIRAI-2024 "
+                             "FD in data/unified/forecasts.jsonl (saves ~94%%).")
     args = parser.parse_args()
 
     if not NEWS_IN.exists():
@@ -72,6 +75,24 @@ def main():
     df = pd.read_csv(NEWS_IN, sep="\t", dtype=str)
     if not args.all and args.n:
         df = df.head(args.n)
+
+    if args.only_referenced:
+        import hashlib, json as _json
+        from pathlib import Path as _Path
+        fc_file = _Path(__file__).parent.parent / "data" / "unified" / "forecasts.jsonl"
+        if not fc_file.exists():
+            print(f"[ERROR] {fc_file} missing; run scripts/unify_forecasts.py first")
+            return
+        needed_aids = set()
+        for _l in open(fc_file, encoding="utf-8"):
+            _fc = _json.loads(_l)
+            if _fc.get("benchmark") == "mirai-2024":
+                needed_aids.update(_fc.get("article_ids", []))
+        def _art_id(u): return "art_" + hashlib.sha1(u.encode("utf-8")).hexdigest()[:12]
+        before = len(df)
+        df = df[df["URL"].fillna("").apply(lambda u: _art_id(u) in needed_aids if u else False)]
+        print(f"--only-referenced: filtered {before} -> {len(df)} URLs "
+              f"(referenced by MIRAI FDs)")
 
     # skip already-fetched
     fetched_ids: set[int] = set()

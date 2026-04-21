@@ -1,0 +1,60 @@
+# Per-source relevance configuration for compute_relevance.py
+#
+# Each source defines:
+#   - embedding_threshold: minimum SBERT cosine similarity between
+#     (forecast question+background) and (article title+first 500 chars)
+#   - keyword_overlap_min: minimum shared N-grams between question and article
+#   - lookback_days: time window before forecast_point within which articles
+#     must be published (articles on or after forecast_point are always
+#     dropped as leakage)
+#   - top_k: maximum number of articles to attach per forecast
+#   - recency_weight: final ranking = recency_weight * recency_score
+#                     + (1-recency_weight) * semantic_similarity
+#     where recency_score = 1 - (t* - pub_date) / lookback_days
+#   - actor_match_required: if true, article.actors must contain
+#     forecast.actors (used only for MIRAI-style oracle matches)
+
+embedding_model: "sentence-transformers/all-mpnet-base-v2"
+batch_size: 32
+max_text_chars: 500   # chars of article text used in embedding input
+
+sources:
+  polymarket:
+    embedding_threshold: 0.30
+    keyword_overlap_min: 0
+    lookback_days: 30
+    top_k: 10
+    recency_weight: 0.30
+    actor_match_required: false
+
+  metaculus:
+    embedding_threshold: 0.30
+    keyword_overlap_min: 0
+    lookback_days: 30
+    top_k: 10
+    recency_weight: 0.30
+    actor_match_required: false
+
+  manifold:
+    embedding_threshold: 0.30
+    keyword_overlap_min: 0
+    lookback_days: 30
+    top_k: 10
+    recency_weight: 0.30
+    actor_match_required: false
+
+  infer:
+    embedding_threshold: 0.30
+    keyword_overlap_min: 0
+    lookback_days: 30
+    top_k: 10
+    recency_weight: 0.30
+    actor_match_required: false
+
+  gdelt-kg:  # MIRAI-2024 oracle matching
+    embedding_threshold: 0.0     # oracle: accept all articles that pass actor+date
+    keyword_overlap_min: 0
+    lookback_days: 90
+    top_k: 10
+    recency_weight: 0.30
+    actor_match_required: true

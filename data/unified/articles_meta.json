@@ -1,0 +1,16 @@
+{
+  "total_articles": 179680,
+  "with_full_text": 976,
+  "with_full_text_pct": 0.5,
+  "by_provenance": {
+    "forecastbench": 1135,
+    "forecastbench|mirai-2024": 8,
+    "forecastbench-stepB": 20,
+    "mirai-2024": 178517
+  },
+  "input_counts": {
+    "forecastbench": 1256,
+    "mirai-2024": 178525
+  },
+  "output_path": "E:\\Projects\\ACH\\data\\unified\\articles.jsonl"
+}

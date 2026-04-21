@@ -9,11 +9,25 @@ data/mirai_repo/
 data/forecastbench_repo/
 data/mirai_2024/kg_raw/
 data/mirai_2024/kg_tmp/
+data/mirai_2024/data_kg.csv
+data/mirai_2024/data_news.csv
+data/mirai_2024/data_news_full.csv
+data/mirai_2024/test/test_kg.csv
 data/mirai_extracted/
 data/fb_raw/
 data/*.zip
 data/*.sqlite
 data/*.db
+
+# Large unified derived files (regenerable from scripts/unify_*.py + raw data)
+data/unified/articles.jsonl
+data/unified/article_embeddings.npy
+data/unified/forecast_embeddings.npy
+data/gdelt_articles.jsonl
+data/gdelt_articles_supplement.jsonl
+data/fb_articles_full.jsonl
+data/metaculus_questions.jsonl
+data/metaculus_news.jsonl
 
 # Raw batch API job results
 results/raw/
