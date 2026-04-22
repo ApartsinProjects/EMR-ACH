@@ -316,3 +316,30 @@ python analysis/compute_metrics.py
 python analysis/compare_systems.py
 python analysis/generate_paper_figures.py
 ```
+
+---
+
+## Leakage Probe (secondary eval)
+
+The primary eval runs at `model_cutoff = 2026-01-01` (Sonnet 4.6 era). To
+rule out the alternative explanation that EMR-ACH lift is an artifact of
+the evaluator model having seen the answers during pretraining, we publish
+a second, smaller build at `model_cutoff = 2024-04-01` (GPT-4o /
+GPT-4o-mini era) and run only B1 (Direct) + EMR-ACH-full on `gpt-4o-mini`.
+If the lift persists when the evaluator's training data strictly predates
+the resolution dates, the lift is attributable to the system, not to
+pretraining leakage.
+
+Config: `configs/leakage_probe_config.yaml` (2024-Q1 window, ~300 FDs
+target, `cutoff_buffer_days: 90` for undisclosed-continued-training drift).
+
+```bash
+python benchmark/build.py --cutoff 2024-04-01 --config configs/leakage_probe_config.yaml
+cd benchmark
+python -m evaluation.baselines.runner --method b1_direct        --model gpt-4o-mini --cutoff 2024-04-01
+python -m evaluation.baselines.runner --method emrach_full      --model gpt-4o-mini --cutoff 2024-04-01
+```
+
+We deliberately do **not** publish intermediate cutoffs (e.g. 2024-12 for
+Sonnet 3.5/3.6). Two cutoffs is enough to make the anti-leakage claim; a
+third adds result-table churn without a new scientific contrast.

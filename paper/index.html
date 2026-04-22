@@ -405,6 +405,9 @@ $$
 <p>
   <strong>Temporal leakage audit:</strong> all three benchmarks are constructed so that every FD satisfies both article-level ($\text{publish\_date} &lt; t^*$) and model-cutoff-level ($\text{resolution\_date} &gt; \text{cutoff} + \text{buffer}$) leakage constraints. FDs that fail either constraint are excluded at build time.
 </p>
+<p>
+  <strong>Primary eval plus leakage probe.</strong> To rule out the alternative explanation that EMR-ACH's lift is an artifact of the evaluator model having seen the answers during pretraining, we publish two builds: a <strong>primary evaluation</strong> at $\text{cutoff} = 2026\text{-}01\text{-}01$ (full benchmark, all nine baselines, all EMR-ACH variants) and a smaller <strong>leakage-probe</strong> build at $\text{cutoff} = 2024\text{-}04\text{-}01$ (GPT-4o / GPT-4o-mini era, 2024-Q1 window, $\sim 300$ FDs after quality filter, $\text{buffer} = 90$ days against undisclosed continued-training drift). On the probe we run only B1 (Direct) and EMR-ACH-full with <code>gpt-4o-mini</code> as the evaluator, so every predicted question resolves strictly after the evaluator's training-data horizon. Persistence of the EMR-ACH lift on the probe is evidence that the lift is attributable to the system, not to pretraining leakage. We deliberately do not publish intermediate cutoffs; two cutoffs are sufficient for the anti-leakage claim, and a third would add result-table churn without a new scientific contrast.
+</p>
 
 <h3>5.5 Phased Experiment Plan</h3>
 <ul>

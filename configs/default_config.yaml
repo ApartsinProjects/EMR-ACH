@@ -35,6 +35,18 @@ benchmarks:
     # ForecastBench is a static dataset from the upstream repo. We download,
     # then filter. No further knobs here; all retrieval parameters live under
     # `relevance.sources.{polymarket,metaculus,manifold,infer}` below.
+    #
+    # DECISION (v2.1): ACLED and FRED are permanently excluded from the FB
+    # question source whitelist. ACLED stores algorithmic event-count
+    # frequencies and FRED stores financial-indicator comparisons — neither
+    # is a calibrated human forecast (crowd Brier > 0.45 on the probed subset),
+    # so using them as "crowd probability" poisons Comply/Surprise labels.
+    # ACLED is likewise NOT wired as an evidence source for GDELT-CAMEO: its
+    # narratives derive from the same news universe as GDELT KG, so pulling
+    # it would reintroduce the retrieval-channel-equals-label-channel leakage
+    # we explicitly removed by going editorial-only. Revisit only if a
+    # verified-conflict-event channel is needed for post-hoc validation
+    # (never as a retrieval source).
     prediction_market_sources: ["polymarket", "metaculus", "manifold", "infer"]
     forecast_horizon_days: 14
 

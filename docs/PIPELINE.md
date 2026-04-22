@@ -166,7 +166,7 @@ CLI flags in `build_benchmark.py` override config values.
 | Key | Description |
 |---|---|
 | `enabled` | Toggle inclusion. |
-| `prediction_market_sources` | List of permitted sources: `polymarket`, `metaculus`, `manifold`, `infer`. |
+| `prediction_market_sources` | List of permitted sources: `polymarket`, `metaculus`, `manifold`, `infer`. ACLED and FRED are permanently excluded (algorithmic pseudo-probabilities, crowd Brier > 0.45 on the probed subset). ACLED is also excluded as a GDELT-CAMEO evidence source to preserve retrieval-channel isolation; see `configs/default_config.yaml` for the full rationale. |
 
 ### 4.3 `benchmarks.gdelt_cameo`
 

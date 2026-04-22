@@ -1,0 +1,62 @@
+# Leakage-probe benchmark config (v2.1 companion to default_config.yaml).
+#
+# Purpose: demonstrate that EMR-ACH lift is NOT an artifact of the evaluator
+# model having seen the answers during pretraining. We rebuild a smaller
+# benchmark at an earlier model_cutoff so the *same* evaluator (e.g.
+# gpt-4o-mini, cutoff ~2024-04) forecasts questions that resolved strictly
+# after its training data ended.
+#
+# Paper framing:
+#   * Primary eval  → data/2026-01-01/ (full benchmark, all baselines)
+#   * Leakage probe → data/2024-04-01/ (this config; B1 + EMR-ACH-full only,
+#                     evaluator held to gpt-4o-mini era)
+#
+# Consumed by: python benchmark/build.py --cutoff 2024-04-01 --config configs/leakage_probe_config.yaml
+#
+# Everything not listed here falls back to default_config.yaml.
+
+model_cutoff: "2024-04-01"    # GPT-4o / GPT-4o-mini training cutoff
+
+# Wider buffer than primary: protects against undisclosed continued training
+# / RLHF drift between the nominal cutoff and the model's actual knowledge
+# horizon. 90d is the conservative recommendation.
+cutoff_buffer_days: 90
+
+# Same horizon as primary — we want apples-to-apples comparison of the
+# system, not the horizon.
+default_forecast_horizon_days: 14
+
+benchmarks:
+
+  forecastbench:
+    enabled: true
+    prediction_market_sources: ["polymarket", "metaculus", "manifold", "infer"]
+    forecast_horizon_days: 14
+
+  gdelt_cameo:
+    enabled: true
+    forecast_horizon_days: 14
+    # Narrow 2024-Q1 window. Shrinks FD count vs primary but is sufficient
+    # for the probe (target N ≈ 300 FDs after quality filter).
+    context_start: "202401"
+    context_end:   "202402"
+    test_month:    "202403"
+    all_end:       "202403"
+    min_daily_mentions: 20
+    max_download_workers: 16
+
+  earnings:
+    enabled: true
+    # 2024-Q1 S&P 500 earnings season.
+    start: "2024-01-15"
+    end:   "2024-04-01"
+    tickers: null
+    threshold: 0.02
+    forecast_horizon_days: 14
+
+# Quality + relevance: inherit defaults. Override here only if the smaller
+# window leaves us below min_articles; prefer lowering the cutoff over
+# loosening the quality bar.
+
+output:
+  root: "benchmark/data"

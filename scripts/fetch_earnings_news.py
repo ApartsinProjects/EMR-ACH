@@ -215,6 +215,17 @@ def fetch_sec_edgar(ticker: str, forecast_point: datetime,
                     lookback_days: int, max_records: int = 10) -> list[dict]:
     """Fetch 8-K filings for a ticker in the pre-forecast window.
 
+    Asymmetric EDGAR policy (v2.1):
+      * Only 8-K current-report filings are returned. 10-Q / 10-K are excluded
+        because the current quarter's 10-Q *is* the earnings release we are
+        trying to forecast (would be leakage).
+      * Window is strictly [forecast_point - lookback_days, forecast_point),
+        i.e. pre-event only; the horizon guard in the baselines runner narrows
+        this further at experiment time.
+      * Records are tagged `source_type: "filing"` so the analysis matrix can
+        down-weight primary-source disclosures versus editorial news (filings
+        confirm events; news forecasts them).
+
     Returns items in the shared article-record shape. Each filing resolves to
     the EDGAR index URL `https://www.sec.gov/Archives/edgar/data/{cik}/{acc}/`.
     Title is derived from the filing's `primaryDocDescription` or form+date.
@@ -261,6 +272,7 @@ def fetch_sec_edgar(ticker: str, forecast_point: datetime,
             "date":        fd_dt.strftime("%Y-%m-%d"),
             "publisher":   "SEC EDGAR",
             "provenance":  "sec-edgar",
+            "source_type": "filing",
         })
         if len(out) >= max_records:
             break
