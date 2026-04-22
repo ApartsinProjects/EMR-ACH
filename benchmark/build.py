@@ -206,6 +206,22 @@ def step_relink_gdelt(enabled: bool, dry_run: bool) -> None:
         run_cmd([PY, str(SCRIPTS / "gdelt_cameo" / "relink_context.py")], dry_run=dry_run)
 
 
+def step_annotate_prior_state(benchmarks: list[str], dry_run: bool) -> None:
+    """Annotate every FD with prior_state + fd_type (stability/change) and
+    promote ground_truth to the Comply/Surprise binary primary target.
+
+    v2.1 framing: domain multiclass (Peace/Tension/Violence, Beat/Meet/Miss,
+    Yes/No) is preserved as `x_multiclass_*` secondary ablation fields; the
+    FD's primary `hypothesis_set` becomes `["Comply", "Surprise"]`. No new
+    API calls; reads data/gdelt_cameo/data_kg.csv and data/earnings/* for
+    the per-benchmark prior-state heuristics. See
+    benchmark/scripts/common/annotate_prior_state.py.
+    """
+    run_cmd([PY, str(SCRIPTS / "common" / "annotate_prior_state.py"),
+             "--benchmarks", ",".join(benchmarks)],
+            dry_run=dry_run)
+
+
 def step_relevance(benchmark: str, rebuild: bool, dry_run: bool) -> None:
     cmd = [PY, str(SCRIPTS / "common" / "compute_relevance.py"),
            "--benchmark-filter", benchmark]
@@ -485,6 +501,15 @@ def main():
         if "gdelt_cameo" in chosen:
             step_relink_gdelt(True, args.dry_run)
         snapshot("07_after_re_relevance_and_relink", args.dry_run)
+
+    # 4c. Annotate prior_state + fd_type and promote ground_truth to the
+    # Comply/Surprise v2.1 primary target. Must run AFTER the final
+    # unify_forecasts.py pass (which rebuilds FD records from per-benchmark
+    # source files and would wipe earlier annotations). Must run BEFORE
+    # quality_filter so the partition-aware slicing (forecasts_filtered_
+    # change.jsonl / _stability.jsonl) is well-defined.
+    step_annotate_prior_state(chosen, args.dry_run)
+    snapshot("07b_after_prior_state_annotation", args.dry_run)
 
     # 5. Quality filter + diagnostic + EDA
     step_quality(cutoff, buffer_days, cfg.get("quality", {}), args.dry_run)

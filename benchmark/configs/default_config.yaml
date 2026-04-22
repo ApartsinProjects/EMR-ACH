@@ -1,5 +1,5 @@
 # Master benchmark construction config.
-# Consumed by scripts/build_benchmark.py.
+# Consumed by benchmark/build.py (and scripts/build_benchmark.py).
 #
 # The single thing you MUST set per rebuild is `model_cutoff` (the LLM training
 # cutoff below which data would leak into the model's pretraining knowledge).
@@ -22,6 +22,12 @@ model_cutoff: "2026-01-01"
 # We recommend 90 days for a conservative default.
 cutoff_buffer_days: 0
 
+# Forecast horizon — how many days before the resolution_date the system's
+# evidence window must end. With horizon_days=14, the last permissible article
+# is at least 2 weeks before the outcome (no nowcasting, no same-day leakage).
+# Per-benchmark override via benchmarks.<name>.forecast_horizon_days below.
+default_forecast_horizon_days: 14
+
 benchmarks:
 
   forecastbench:
@@ -29,10 +35,24 @@ benchmarks:
     # ForecastBench is a static dataset from the upstream repo. We download,
     # then filter. No further knobs here; all retrieval parameters live under
     # `relevance.sources.{polymarket,metaculus,manifold,infer}` below.
+    #
+    # DECISION (v2.1): ACLED and FRED are permanently excluded from the FB
+    # question source whitelist. ACLED stores algorithmic event-count
+    # frequencies and FRED stores financial-indicator comparisons, neither
+    # is a calibrated human forecast (crowd Brier > 0.45 on the probed subset),
+    # so using them as "crowd probability" poisons Comply/Surprise labels.
+    # ACLED is likewise NOT wired as an evidence source for GDELT-CAMEO: its
+    # narratives derive from the same news universe as GDELT KG, so pulling
+    # it would reintroduce the retrieval-channel-equals-label-channel leakage
+    # we explicitly removed by going editorial-only. Revisit only if a
+    # verified-conflict-event channel is needed for post-hoc validation
+    # (never as a retrieval source).
     prediction_market_sources: ["polymarket", "metaculus", "manifold", "infer"]
+    forecast_horizon_days: 14
 
   gdelt_cameo:
     enabled: true
+    forecast_horizon_days: 14
     # GDELT KG context window. All dates in YYYYMM format.
     # context_start..context_end = retrieval context window
     # test_month                 = month the forecasting queries are drawn from
@@ -41,7 +61,9 @@ benchmarks:
     context_end:   "202602"
     test_month:    "202603"
     all_end:       "202603"
-    min_daily_mentions: 50     # source-reliability threshold (from GDELT methodology)
+    min_daily_mentions: 20     # source-reliability threshold (GDELT convention; 50 was
+                               # the historic value but kept ~2.4k FDs; 20 is still
+                               # a strong reliability signal and grows us to ~5-6k FDs)
     max_download_workers: 16
 
   earnings:
@@ -51,6 +73,7 @@ benchmarks:
     end:   "2026-04-21"
     tickers: null              # null = default ticker list in scripts/earnings/build.py
     threshold: 0.02            # |beat/miss| as fraction of consensus EPS
+    forecast_horizon_days: 14  # evidence cutoff is report_date minus 14 days
 
 # Quality-filter thresholds applied after unification.
 quality:
@@ -114,13 +137,20 @@ relevance:
       actor_match_required: false
 
 # Where final artifacts go. Orchestrator writes to {output_root}/{model_cutoff}/.
+# Path resolved relative to benchmark/ when invoked via benchmark/build.py.
 output:
   root: "data"
 
+# Pipeline runtime tuning, hardware-dependent knobs previously hardcoded in scripts.
+pipeline:
+  snapshot_hardlink_bytes:  20000000   # files > this threshold are hardlinked into snapshots
+                                       # instead of copied (saves disk on GDELT KG exports)
+  text_fetch_workers:       24          # concurrent HTTP workers for fetch_article_text.py
+  gdelt_text_fetch_workers: 24          # concurrent HTTP workers for fetch_gdelt_text.py
+  http_timeout_sec:         30          # per-request HTTP timeout across all fetchers
+
 # Secrets: names of environment variables to read API keys from.
 # Leave values blank in the committed config; populate your ~/.env or shell.
-# Currently no script in the release pipeline requires a token; this section
-# exists for forward compatibility (earnings news APIs, etc.).
 secrets:
   openai_api_key:   "OPENAI_API_KEY"
   newsapi_key:      "NEWSAPI_KEY"
