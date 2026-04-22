@@ -536,7 +536,7 @@ def load_fds() -> list[dict]:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--source", choices=["all", "yfinance", "gdelt", "google", "finnhub"], default="all")
+    ap.add_argument("--source", choices=["all", "yfinance", "gdelt", "google", "finnhub", "edgar"], default="all")
     ap.add_argument("--lookback", type=int, default=90,
                     help="Days before report_date to search (default 90 — unified 'forecast from prior news' window)")
     ap.add_argument("--max-gdelt", type=int, default=15,
@@ -610,6 +610,8 @@ def main():
                       f"written so far: {written}  per_prov={dict(per_prov_count)}")
 
             collected: list[dict] = []
+            if args.source in ("all", "edgar"):
+                collected.extend(fetch_sec_edgar(ticker, forecast_point_dt, args.lookback))
             if args.source in ("all", "finnhub"):
                 collected.extend(fetch_finnhub(ticker, forecast_point_dt, args.lookback))
             if args.source in ("all", "yfinance"):
