@@ -22,6 +22,12 @@ model_cutoff: "2026-01-01"
 # We recommend 90 days for a conservative default.
 cutoff_buffer_days: 0
 
+# Forecast horizon — how many days before the resolution_date the system's
+# evidence window must end. With horizon_days=14, the last permissible article
+# is at least 2 weeks before the outcome (no nowcasting, no same-day leakage).
+# Per-benchmark override via benchmarks.<name>.forecast_horizon_days below.
+default_forecast_horizon_days: 14
+
 benchmarks:
 
   forecastbench:
@@ -30,9 +36,11 @@ benchmarks:
     # then filter. No further knobs here; all retrieval parameters live under
     # `relevance.sources.{polymarket,metaculus,manifold,infer}` below.
     prediction_market_sources: ["polymarket", "metaculus", "manifold", "infer"]
+    forecast_horizon_days: 14
 
   gdelt_cameo:
     enabled: true
+    forecast_horizon_days: 14
     # GDELT KG context window. All dates in YYYYMM format.
     # context_start..context_end = retrieval context window
     # test_month                 = month the forecasting queries are drawn from
@@ -41,7 +49,9 @@ benchmarks:
     context_end:   "202602"
     test_month:    "202603"
     all_end:       "202603"
-    min_daily_mentions: 50     # source-reliability threshold (from GDELT methodology)
+    min_daily_mentions: 20     # source-reliability threshold (GDELT convention; 50 was
+                               # the historic value but kept ~2.4k FDs; 20 is still
+                               # a strong reliability signal and grows us to ~5-6k FDs)
     max_download_workers: 16
 
   earnings:
@@ -51,6 +61,7 @@ benchmarks:
     end:   "2026-04-21"
     tickers: null              # null = default ticker list in scripts/earnings/build.py
     threshold: 0.02            # |beat/miss| as fraction of consensus EPS
+    forecast_horizon_days: 14  # evidence cutoff is report_date − 14 days
 
 # Quality-filter thresholds applied after unification.
 quality:

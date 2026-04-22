@@ -4,7 +4,7 @@ Shared prompt templates for all baselines.
 All templates accept the unified FD schema fields (hypothesis_set, hypothesis_definitions,
 question, background, articles_block) so the same prompts work for:
   - ForecastBench binary Yes/No
-  - GDELT-CAMEO 4-class (Verbal cooperation / Material cooperation / Verbal conflict / Material conflict)
+  - GDELT-CAMEO 3-class ordinal intensity (Peace / Tension / Violence)
   - Earnings 3-class (Beat / Meet / Miss)
 
 Keep all prompt strings here; baseline method files import them.
@@ -41,7 +41,7 @@ _BASE_USER = """Forecasting question: {question}
 
 Background / resolution criteria:
 {background}
-
+{prior_expectation_block}
 Candidate hypotheses (pick exactly one):
 {hypotheses_block}
 
@@ -58,6 +58,33 @@ Return JSON only (no prose, no code fences):
   "prediction": "<exactly one of: {hypothesis_list}>",
   "reasoning": "<one or two concise sentences citing the articles>"{schema_extra}
 }}"""
+
+
+def _prior_expectation_block(fd: dict) -> str:
+    """Render a natural-language 'status quo' sentence from the FD's prior-state
+    annotation. Empty string when no annotation is available (keeps the prompt
+    unchanged for FDs that weren't annotated)."""
+    prior = fd.get("prior_state_30d")
+    if not prior:
+        return ""
+    stability = fd.get("prior_state_stability", 0.0)
+    n_events = fd.get("prior_state_n_events", 0)
+    bench = fd.get("benchmark", "")
+    # Human-readable expectation sentence per benchmark.
+    if bench == "gdelt-cameo":
+        exp = (f"Over the past {fd.get('lookback_days', 90)} days, the dominant "
+               f"interaction class between these actors has been '{prior}' "
+               f"(observed in {int(stability*100)}% of {n_events} prior events).")
+    elif bench == "earnings":
+        exp = (f"In recent prior quarters, this company has mostly reported "
+               f"'{prior}' outcomes (matching in {int(stability*100)}% of "
+               f"{n_events} prior quarters).")
+    elif bench == "forecastbench":
+        exp = (f"The prediction-market crowd's implied majority answer at freeze "
+               f"was '{prior}' (confidence strength {stability:.2f}).")
+    else:
+        exp = f"The status-quo expectation for this FD is '{prior}'."
+    return f"\nPrior expectation (status quo): {exp}\n"
 
 
 def _shuffled_order(hypothesis_set: list[str], fd_id: str, salt: str = "") -> list[str]:
@@ -88,6 +115,7 @@ def render_user(
     return _BASE_USER.format(
         question=fd["question"],
         background=(fd.get("background") or "(none)").strip() or "(none)",
+        prior_expectation_block=_prior_expectation_block(fd),
         hypotheses_block=format_hypotheses(display, fd.get("hypothesis_definitions", {})),
         articles_block=articles_block,
         forecast_point=fd.get("forecast_point", "N/A"),

@@ -98,7 +98,7 @@ caption{caption-side:bottom;font-size:9pt;color:var(--cap);
   We formalize ACH as an evidence matrix inference problem and instantiate it with LLMs, yielding an inference-only pipeline we call <strong>EMR-ACH</strong> (Evidence Matrix Reasoning). Forecasting is represented as two matrices: an <em>analysis matrix</em> $A$ encoding how strongly each retrieved article manifests each early-warning indicator, and an <em>influence matrix</em> $I$ encoding how each indicator bears on each candidate hypothesis. The score for hypothesis $h$ is $\text{Score}(h) = \sum_i \sum_j d_j \cdot A_{ij} \cdot I_{jh}$, with $d_j$ a diagnosticity weight that up-weights indicators that discriminate between hypotheses. The final output is $\hat{h} = \arg\max_h \text{Score}(h)$ — a single pick, no distribution. A multi-agent adversarial variant assigns one advocate agent per hypothesis and uses a judge agent to choose the winning label.
 </p>
 <p>
-  We evaluate on three benchmarks, unified under a common Forecast Dossier schema: ForecastBench binary prediction-market questions, GDELT-CAMEO quad-class event categorization (MIRAI-2024 methodology), and an Earnings three-class benchmark. All data is leakage-guarded both at the article level (publish date &lt; forecast point) and at the model-cutoff level (resolution date &gt; training cutoff + buffer). Every baseline in the comparison (Direct, CoT, RAG, Self-Consistency, Multi-Agent Debate, Tree-of-Thoughts, Reflexion, LLM Ensemble) returns a single hypothesis pick under identical retrieval and model conditions. Reported metrics are accuracy, macro-F1, per-class recall, and confusion matrix, each with bootstrap 95% confidence intervals. Every benchmark also reports a <em>majority-class</em> reference baseline; systems that do not beat majority-class accuracy are reported as having no selection skill. <strong>Full results pending completion of the Phase-3 run.</strong>
+  We evaluate on three benchmarks, unified under a common Forecast Dossier (FD) schema and a single "forecast event outcome from prior news" task framing. <strong>ForecastBench</strong> supplies binary Yes/No prediction-market questions. <strong>GDELT-CAMEO</strong> supplies country-pair event questions labelled by a 3-class <em>intensity</em> taxonomy (Peace / Tension / Violence, derived from CAMEO root codes 01-09 / 10-17 / 18-20); GDELT is the question channel only, while the evidence channel is independent editorial news (NYT, Guardian, Google News), so ground-truth and retrieval are information-theoretically decoupled. <strong>Earnings</strong> supplies quarterly EPS forecasts against analyst consensus with Beat / Meet / Miss outcomes. All data is leakage-guarded both at the article level (publish date &lt; forecast point) and at the model-cutoff level (resolution date &gt; training cutoff + buffer). Every FD carries a <strong>prior-state</strong> annotation (modal prior-30d intensity for GDELT; mode of prior 4 quarters for earnings; crowd probability for ForecastBench), which partitions FDs into <em>stability</em> (ground truth matches prior state; trivially predictable status-quo) and <em>change</em> (forecasting skill required). Headline metrics are reported on the Change subset. Every baseline in the comparison (Direct, CoT, RAG, Self-Consistency, Multi-Agent Debate, Tree-of-Thoughts, Reflexion, LLM Ensemble) returns a single hypothesis pick under identical retrieval and model conditions. Reported metrics are accuracy, balanced accuracy, normalized balanced accuracy (K-invariant), macro-F1, Matthews correlation coefficient, and per-class recall, each with stratified bootstrap 95% confidence intervals. Every benchmark also reports <em>majority-class</em> and <em>random</em> reference baselines; systems that do not beat majority-class accuracy are reported as having no selection skill. <strong>Full results pending completion of the Phase-3 run.</strong>
 </p>
 </div>
 
@@ -131,7 +131,7 @@ caption{caption-side:bottom;font-size:9pt;color:var(--cap);
 </ul>
 
 <p>
-  We evaluate on three complementary benchmarks unified under a common Forecast Dossier (FD) schema: <strong>ForecastBench</strong> [4] binary prediction-market questions, <strong>GDELT-CAMEO</strong> quad-class event prediction (built on MIRAI's methodology [3]), and an <strong>Earnings</strong> three-class Beat/Meet/Miss benchmark. Every system returns a single hypothesis label; every benchmark also carries a <em>majority-class</em> reference so any claim of selection skill is measured against the trivial baseline that simply predicts the most frequent class.
+  We evaluate on three complementary benchmarks unified under a common Forecast Dossier (FD) schema: <strong>ForecastBench</strong> [4] binary prediction-market questions, <strong>GDELT-CAMEO Geopolitics</strong> — a country-pair event-intensity benchmark built from scratch on the public GDELT 2.0 Knowledge Graph (MIRAI [3] is prior work on the same data source and is compared as an external anchor only; our target, horizon, retrieval, and evaluation protocol all differ — see §2.1), and an <strong>Earnings</strong> three-class Beat/Meet/Miss benchmark over the S&amp;P 500. Every system returns a single hypothesis label; every benchmark also carries a <em>majority-class</em> reference so any claim of selection skill is measured against the trivial baseline that simply predicts the most frequent class.
 </p>
 
 <p>
@@ -158,7 +158,15 @@ caption{caption-side:bottom;font-size:9pt;color:var(--cap);
   Early work on open-ended forecasting with language models focused on QA formats grounded in news: ForecastQA [22] introduced multiple-choice future-event QA, and Autocast [19] pioneered automated forecasting on binary/numeric/multiple-choice Metaculus and GJOpen questions by combining LLM reading with a news corpus. These approaches established the basic recipe (question → retrieve → reason → predict) but treated prediction as an ad-hoc LLM call rather than an inference procedure with explicit evidence structure.
 </p>
 <p>
-  Geopolitical event forecasting has been studied most extensively against GDELT- and ICEWS-derived benchmarks. MIRAI [3] is the most directly comparable structured evaluation: it formalizes forecasting as quad-class CAMEO relation prediction between country pairs, provides an oracle news corpus, and reports a best-performing ReAct agent at 44.2% F1. Tang et al. [28] attack a similar problem with iterative news-grounded reasoning, and Xie et al. [27] build a multi-stage news-to-forecast pipeline. Abolghasemi et al. [16] introduce ThinkTank-ME, a domain-specialized fine-tuned expert model for Middle East forecasting. EMR-ACH differs fundamentally: no fine-tuning, any forecasting domain with a discrete hypothesis set, and evidence-matrix aggregation rather than free-form reasoning.
+  Geopolitical event forecasting has been studied most extensively against GDELT- and ICEWS-derived benchmarks. <strong>MIRAI</strong> [3] is the most directly comparable structured evaluation: it formalizes forecasting as quad-class CAMEO relation prediction between country pairs, provides an oracle news corpus, and reports a best-performing ReAct agent at 44.2% F1 on Nov-2023 test events. Its methodology, however, has three limitations that our benchmark is designed to address:
+</p>
+<ol>
+  <li><strong>Variable-horizon evaluation.</strong> MIRAI fixes <em>forecast_point</em> at November 1 and labels events throughout the entire test month, so the effective prediction horizon ranges from 0 days (Nov 1 events — essentially nowcasting) to ~30 days (late-November events). Reported F1 is the mix, making it impossible to separate nowcasting competence from true forecasting skill. EMR-ACH applies a <strong>fixed 14-day forecast horizon</strong> per FD (configurable; see §5.6), guaranteeing that every evaluated prediction is made with at least a two-week evidence embargo.</li>
+  <li><strong>No expectation baseline.</strong> MIRAI evaluates on the raw quad label directly, so trivially-predicted "stability" FDs (already-violent pairs predicted to stay violent; already-peaceful pairs predicted to stay peaceful) dominate the easy-base-rate cases and dilute the headline. Forecasting skill — the thing the benchmark should reward — is only meaningfully tested when the outcome breaks the status-quo expectation. EMR-ACH's <strong>Comply vs Surprise</strong> binary primary target (§3.4) makes this explicit and reports headline numbers on the Change subset where prior expectation fails.</li>
+  <li><strong>Low-distinguishability classes.</strong> MIRAI's quad-class target (VC / MC / VK / MK) has two semantically-close pairs that even competent LLMs confuse systematically: Verbal Cooperation vs. Material Cooperation, and Verbal Conflict vs. Material Conflict. In our pilot experiments, gpt-4o-mini collapses 76% of Verbal Cooperation FDs onto Material Cooperation regardless of article evidence. EMR-ACH's GDELT-CAMEO label is a <strong>3-class ordinal intensity</strong> (Peace / Tension / Violence) mapped directly from CAMEO root codes (§3.5); class boundaries are interpretable to both humans and LLMs, and baselines make sensible predictions without the confusable-pair collapse.</li>
+</ol>
+<p>
+  Tang et al. [28] attack a similar problem with iterative news-grounded reasoning, and Xie et al. [27] build a multi-stage news-to-forecast pipeline. Abolghasemi et al. [16] introduce ThinkTank-ME, a domain-specialized fine-tuned expert model for Middle East forecasting. EMR-ACH differs fundamentally from all of these: no fine-tuning, uniform task across three heterogeneous domains (geopolitics, finance, prediction markets), explicit horizon + Comply/Surprise primary target, and evidence-matrix aggregation rather than free-form reasoning.
 </p>
 <p>
   A second line of work targets <em>market-calibrated</em> prediction where human crowd forecasts are available. ForecastBench [4] provides a dynamic benchmark of ~1,000 continuously-updated questions from Metaculus, Manifold, Polymarket, Infer, plus algorithmic sources. Halawi et al. [5] reach near human-level performance via aggressive retrieval, news summarization, and ensembling. Schoenegger et al. [20] run a Metaculus-style tournament and find LLMs systematically overconfident. We use ForecastBench's prediction-market subset as one of three evaluation benchmarks, treating each question as a binary Yes/No selection task — we do not compare against crowd probabilities on a calibration axis, since our system emits a single pick.
@@ -204,7 +212,7 @@ $$
 </p>
 <ul style="margin-top:-4px;">
   <li>$q$ is the forecasting question (natural-language or structured);</li>
-  <li>$\mathcal{H} = \{h_1,\ldots,h_K\}$ is the task-specific hypothesis set (binary, quad-class CAMEO, three-class earnings, etc.);</li>
+  <li>$\mathcal{H} = \{h_1,\ldots,h_K\}$ is the task-specific hypothesis set (binary, 3-class CAMEO ordinal, three-class earnings, etc.);</li>
   <li>$t^{*}$ is the <em>forecast point</em>: the cut-off time at which the prediction is made;</li>
   <li>$T$ is the <em>retrieval lookback window</em>;</li>
   <li>$\mathcal{D}_{q,t^{*},T} = \{a_1,\ldots,a_n\}$ is the retrieved evidence corpus, strictly filtered to articles with publication date $&lt; t^{*}$;</li>
@@ -226,7 +234,7 @@ $$
     <th>Slot</th><th>ForecastBench</th><th>GDELT-CAMEO</th><th>Earnings</th>
   </tr>
   <tr><td>$q$</td><td>NL market question + background</td><td>$(t, s, ?, o)$ country-pair triple</td><td>"Will {ticker} {beat/meet/miss} EPS on {date}?"</td></tr>
-  <tr><td>$\mathcal{H}$</td><td>$\{\text{Yes, No}\}$</td><td>$\{\text{VC, MC, VK, MK}\}$ (CAMEO quad-class)</td><td>$\{\text{Beat, Meet, Miss}\}$</td></tr>
+  <tr><td>$\mathcal{H}$</td><td>$\{\text{Yes, No}\}$</td><td>$\{\text{Peace, Tension, Violence}\}$ (CAMEO 3-class ordinal)</td><td>$\{\text{Beat, Meet, Miss}\}$</td></tr>
   <tr><td>$t^{*}$</td><td>market freeze date</td><td>first day of test month</td><td>day before earnings call</td></tr>
   <tr><td>$T$</td><td>30 days pre-freeze</td><td>90 days pre-test</td><td>30 days pre-call</td></tr>
   <tr><td>$\mathcal{D}_{q,t^{*},T}$</td><td>SBERT-scored + date-filtered news pool; top-10</td><td>GDELT KG oracle articles matching actors $(s,o)$, dated &lt; $t^{*}$</td><td>SBERT-scored news pool on ticker + macro; top-10</td></tr>
@@ -261,7 +269,7 @@ $$
 
 <h3>4.1 Step 1: Contrastive Indicator Generation</h3>
 <p>
-  For FD query $q$, we prompt the LLM to generate early-warning indicators across all hypotheses in $\mathcal{H}$ using a <em>contrastive</em> strategy: for each pair $(h_a, h_b) \in \binom{\mathcal{H}}{2}$, we request indicators that strongly distinguish $h_a$ from $h_b$. This produces $m = \binom{|\mathcal{H}|}{2} \cdot K_{\text{pair}}$ indicators with guaranteed pairwise coverage. For $|\mathcal{H}|=4, K_{\text{pair}}=4$: $m=24$ indicators. For binary $|\mathcal{H}|=2, K_{\text{pair}}=8$: $m=8$.
+  For FD query $q$, we prompt the LLM to generate early-warning indicators across all hypotheses in $\mathcal{H}$ using a <em>contrastive</em> strategy: for each pair $(h_a, h_b) \in \binom{\mathcal{H}}{2}$, we request indicators that strongly distinguish $h_a$ from $h_b$. This produces $m = \binom{|\mathcal{H}|}{2} \cdot K_{\text{pair}}$ indicators with guaranteed pairwise coverage. For 3-class $|\mathcal{H}|=3, K_{\text{pair}}=3$: $m=9$ indicators. For binary $|\mathcal{H}|=2, K_{\text{pair}}=8$: $m=8$.
 </p>
 <div class="note">
   <span class="note-title">Contrastive indicator prompt (abridged):</span> "Generate $K_{\text{pair}}$ observable news indicators that would most strongly distinguish between {$h_a$}: {description} and {$h_b$}: {description} in the context of query $q$. Each indicator should have markedly different presence under the two outcomes."
@@ -318,7 +326,7 @@ $$
 
 <h3>4.5 Optional Domain-Specific Refinement</h3>
 <p>
-  When the hypothesis space has a coarse-to-fine structure, an optional secondary pass can refine the primary pick within the top-ranked coarse class. The general pattern: a task-specific classifier scores retrieved articles along a domain-defined axis and uses cumulative agreement to resolve ambiguity the matrix aggregation left unresolved. One example: MIRAI's quad-class setting admits refinement along the Verbal vs. Material axis. For benchmarks without coarse-to-fine structure (e.g., binary ForecastBench), this step is omitted.
+  When the hypothesis space has a coarse-to-fine structure, an optional secondary pass can refine the primary pick within the top-ranked coarse class. The general pattern: a task-specific classifier scores retrieved articles along a domain-defined axis and uses cumulative agreement to resolve ambiguity the matrix aggregation left unresolved. For our benchmark's primary binary target (Comply vs Surprise, §3.4) this step is omitted; it may help the secondary multi-class GDELT-CAMEO Geopolitics target along a verbal-vs-material refinement axis. For binary-hypothesis benchmarks (e.g. ForecastBench), the refinement pass is skipped.
 </p>
 
 <h3>4.6 Multi-Agent Adversarial ACH</h3>
@@ -350,9 +358,9 @@ $$
   ForecastBench [4] provides a dynamic benchmark drawn from prediction markets (Metaculus, Manifold, Polymarket). We restrict to single-ID binary questions with resolved ground truth. Questions are filtered by keyword, and those resolving before the model's training cutoff + buffer are dropped. Class balance is ~83% No / ~17% Yes, so the majority-class baseline accuracy is 83%; any reported system must be compared against it.
 </p>
 
-<h4>GDELT-CAMEO (MIRAI-2024 methodology)</h4>
+<h4>GDELT-CAMEO Geopolitics</h4>
 <p>
-  <strong>GDELT-CAMEO</strong> is a leakage-free extension of the MIRAI benchmark [3] built by re-running the MIRAI construction pipeline on GDELT 2.0 data in a window entirely after the model training cutoff. The pipeline filters for country-coded bilateral events with $\geq 50$ daily source mentions, and generates $(t, s, ?, o)$ forecasting queries in the CAMEO quad-class format. Ground truth and oracle article links are derived directly from the GDELT KG, following MIRAI's original methodology.
+  The <strong>GDELT-CAMEO Geopolitics</strong> subset is constructed from scratch on the public GDELT 2.0 Knowledge Graph, entirely within the post-cutoff window. The pipeline filters for country-coded bilateral events with $\geq 50$ daily source mentions (a long-standing GDELT-community reliability threshold), groups events into $(t, \text{actor}_s, \text{actor}_o)$ daily FDs, and labels each with the <strong>3-class ordinal intensity</strong> (Peace / Tension / Violence) derived from the CAMEO root codes (01–09 / 10–17 / 18–20). GDELT is used as the question/label source only; the evidence channel is independent editorial news (NYT, Guardian, Google News), decoupling retrieval from ground truth. The prior work MIRAI [3] uses the same data source with a different (quad-class, oracle-retrieval, variable-horizon) methodology — we cite it as an external anchor but share no code or data-construction path.
 </p>
 
 <h4>Earnings (three-class Beat/Meet/Miss)</h4>
@@ -439,7 +447,7 @@ $$
   <tr>
     <th rowspan="2">Method</th>
     <th colspan="2">ForecastBench (binary)</th>
-    <th colspan="2">GDELT-CAMEO (4-class)</th>
+    <th colspan="2">GDELT-CAMEO (3-class)</th>
     <th colspan="2">Earnings (3-class)</th>
   </tr>
   <tr>
@@ -464,7 +472,7 @@ $$
 
 <h3>6.2 Per-Class Breakdown (GDELT-CAMEO)</h3>
 <p>
-  Table 2 (pending) reports per-class recall for each CAMEO class (VC / MC / VK / MK) under three representative system configurations: best baseline, EMR-ACH base, and full system. This isolates which classes benefit most from diagnosticity weighting vs. multi-agent debate.
+  Table 2 (pending) reports per-class recall for Peace / Tension / Violence under three representative system configurations: best baseline, EMR-ACH base, and full system. This isolates which classes benefit most from diagnosticity weighting vs. multi-agent debate.
 </p>
 
 <h3>6.3 Confusion Matrices</h3>

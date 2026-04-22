@@ -22,14 +22,14 @@ Usage:
   python scripts/build_benchmark.py --dry-run
 
 Pipeline steps (always run in order):
-  1. Per-benchmark raw build (MIRAI KG download + filter; earnings via yfinance;
+  1. Per-benchmark raw build (GDELT-CAMEO KG download + filter; earnings via yfinance;
      ForecastBench uses the static repo clone — no raw build, just filter)
-  2. Per-benchmark article-text fetch (trafilatura for MIRAI + ForecastBench
+  2. Per-benchmark article-text fetch (trafilatura for Geopolitics + ForecastBench
      URLs; earnings news fetch TBD)
   3. unify_articles.py -> data/unified/articles.jsonl
   4. unify_forecasts.py -> data/unified/forecasts.jsonl
   5. compute_relevance.py per benchmark (SBERT cross-match within-scope)
-  6. relink_gdelt_context.py (MIRAI-specific: replace oracle event articles
+  6. relink_gdelt_context.py (Geopolitics-specific: replace oracle event articles
      with pre-event context)
   7. quality_filter.py --model-cutoff X --cutoff-buffer-days Y
   8. diagnostic_report.py
@@ -169,7 +169,7 @@ def step_gdelt_cameo(cfg_bm: dict, skip_raw: bool, dry_run: bool) -> None:
 
 
 def step_gdelt_text_fetch(dry_run: bool, workers: int = 24) -> None:
-    """Fetch full article text for MIRAI FDs (only URLs referenced by FDs).
+    """Fetch full article text for Geopolitics (GDELT-CAMEO) FDs — only URLs referenced by FDs.
     Must run AFTER relink_gdelt_context.py populates article_ids with
     pre-event context (oracle-event articles are replaced by then).
 
@@ -243,9 +243,21 @@ def step_earnings(cfg_bm: dict, skip_raw: bool, dry_run: bool) -> None:
     run_cmd(cmd, dry_run=dry_run)
 
 
-def step_unify(dry_run: bool) -> None:
-    run_cmd([PY, str(SCRIPTS / "unify_articles.py")],    dry_run=dry_run)
-    run_cmd([PY, str(SCRIPTS / "unify_forecasts.py")],   dry_run=dry_run)
+def step_unify(dry_run: bool, horizons: dict | None = None) -> None:
+    """Run article + forecast unifiers. `horizons` dict, when provided, is
+    passed as env vars so unify_forecasts.py uses the configured horizon per
+    benchmark (no hardcoded defaults)."""
+    env = {}
+    if horizons:
+        if "forecastbench" in horizons:
+            env["EMRACH_FB_HORIZON_DAYS"] = str(horizons["forecastbench"])
+        if "gdelt_cameo" in horizons:
+            env["EMRACH_GDELT_HORIZON_DAYS"] = str(horizons["gdelt_cameo"])
+        if "earnings" in horizons:
+            env["EMRACH_EARN_HORIZON_DAYS"] = str(horizons["earnings"])
+    run_cmd([PY, str(SCRIPTS / "unify_articles.py")],   dry_run=dry_run)
+    run_cmd([PY, str(SCRIPTS / "unify_forecasts.py")],
+            env_overrides=env or None, dry_run=dry_run)
 
 
 def step_relink_gdelt(enabled: bool, dry_run: bool) -> None:
@@ -560,8 +572,17 @@ def main():
     if "earnings" in chosen:
         step_earnings(cfg["benchmarks"]["earnings"], args.skip_raw, args.dry_run)
 
+    # Build the per-benchmark forecast-horizon map from config, falling back
+    # to `default_forecast_horizon_days` (14) when a specific benchmark omits it.
+    _default_h = int(cfg.get("default_forecast_horizon_days", 14))
+    horizons = {
+        b: int(cfg.get("benchmarks", {}).get(b, {}).get("forecast_horizon_days", _default_h))
+        for b in ("forecastbench", "gdelt_cameo", "earnings")
+    }
+    log(f"[horizons] forecast_horizon_days: {horizons}")
+
     # 2. Unify (first pass — article pool has titles only for gdelt_cameo)
-    step_unify(args.dry_run)
+    step_unify(args.dry_run, horizons=horizons)
     snapshot("01_after_first_unify", args.dry_run)
 
     # 2b. Multi-source per-FD news fetch (unified 90d analysis window):
@@ -572,6 +593,17 @@ def main():
     # Re-unify so the newly fetched articles enter the unified article pool.
     step_unify(args.dry_run)
     snapshot("01b_after_multi_source_news", args.dry_run)
+
+    # 2c. Annotate FDs with prior-state + stability/change partition across
+    #     all benchmarks. Required for the headline "change" subset metrics:
+    #       gdelt-cameo  : modal Peace/Tension/Violence intensity over prior 30d
+    #       earnings     : mode of prior 4 quarters' Beat/Meet/Miss surprise class
+    #       forecastbench: crowd_probability ≥ 0.5 → expected "Yes" else "No"
+    #     No new API calls. See scripts/annotate_prior_state.py.
+    run_cmd([PY, str(SCRIPTS / "annotate_prior_state.py"),
+             "--benchmarks", ",".join(chosen)],
+            dry_run=args.dry_run)
+    snapshot("01c_after_prior_state_annotation", args.dry_run)
 
     # 3. Relevance (runs the two benchmark-filter passes IN PARALLEL —
     # see step_relevance_parallel). Saves ~7 min per build.

@@ -1,7 +1,7 @@
 """Fetch pre-event news for each GDELT-CAMEO FD across multiple sources.
 
 Mirrors fetch_forecastbench_news.py but uses the actor country pair as the
-retrieval query. Moves MIRAI away from same-day oracle Docids toward the
+retrieval query. Moves GDELT-CAMEO away from same-day oracle Docids toward the
 unified "forecast event outcome from prior news" task shared by ForecastBench
 and earnings.
 
@@ -288,7 +288,16 @@ def fd_query(fd: dict) -> str:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--source", choices=["all", "gdelt", "google", "guardian", "nyt"], default="all")
+    ap.add_argument("--source",
+                    choices=["all", "editorial", "gdelt", "google", "guardian", "nyt"],
+                    default="editorial",
+                    help="Source cascade. Default 'editorial' = Guardian + NYT + Google News "
+                         "(no GDELT DOC). Under the 2026-04-22 'forecast from prior news' design, "
+                         "the GDELT Event Database supplies the question/ground-truth only; "
+                         "evidence MUST come from independent editorial sources to keep the "
+                         "retrieval channel information-theoretically separate from the label "
+                         "channel. Pass --source all to include GDELT DOC (for legacy "
+                         "comparability runs).")
     ap.add_argument("--lookback", type=int, default=90,
                     help="Days before event_date to search (default 90 — unified analysis window)")
     ap.add_argument("--max-gdelt", type=int, default=18)
@@ -356,12 +365,16 @@ def main():
                 print(f"  [{i+1}/{len(fds)}] {fd_id}  q={query!r}  written={written}  prov={dict(per_prov)}")
 
             collected = []
-            if args.source in ("all", "nyt"):
+            # Editorial sources (default / --source editorial) — independent from
+            # the GDELT label channel, so retrieval doesn't leak into ground truth.
+            if args.source in ("all", "editorial", "nyt"):
                 collected.extend(fetch_nyt(query, fp_dt, args.lookback))
-            if args.source in ("all", "guardian"):
+            if args.source in ("all", "editorial", "guardian"):
                 collected.extend(fetch_guardian(query, fp_dt, args.lookback, args.max_guardian))
-            if args.source in ("all", "google"):
+            if args.source in ("all", "editorial", "google"):
                 collected.extend(fetch_google_news(query, fp_dt, args.lookback))
+            # GDELT DOC — only when --source all or --source gdelt is explicitly
+            # passed. Kept for legacy ablation only; default design avoids it.
             if args.source in ("all", "gdelt"):
                 collected.extend(fetch_gdelt(query, fp_dt, args.lookback, args.max_gdelt, fd_id=fd_id))
 

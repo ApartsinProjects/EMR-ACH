@@ -91,6 +91,51 @@ def load_articles_index(path: str | Path) -> dict[str, dict]:
     return idx
 
 
+def apply_experiment_horizon(fds: list[dict], articles_idx: dict[str, dict],
+                             horizon_days: int | None) -> list[dict]:
+    """Filter each FD's article_ids to those with publish_date < (resolution_date − horizon_days).
+
+    This is the experiment-time forecast-horizon filter. FDs are built with
+    article_ids spanning the full lookback window up to resolution_date, and
+    the evaluator applies a horizon at test time. When horizon_days is None,
+    fall back to the FD's own `default_horizon_days` (14 by convention).
+
+    FDs whose article_ids are fully filtered out are kept (with empty
+    article_ids); downstream baselines will handle the empty-evidence case.
+    """
+    from datetime import datetime as _dt, timedelta as _td
+    n_dropped_total = 0
+    for fd in fds:
+        h = horizon_days if horizon_days is not None else int(fd.get("default_horizon_days", 14))
+        try:
+            res_dt = _dt.strptime(str(fd.get("resolution_date", ""))[:10], "%Y-%m-%d")
+        except ValueError:
+            continue
+        cutoff = res_dt - _td(days=h)
+        kept = []
+        for aid in fd.get("article_ids", []) or []:
+            a = articles_idx.get(aid)
+            if not a:
+                continue
+            try:
+                pd_dt = _dt.strptime(str(a.get("publish_date", ""))[:10], "%Y-%m-%d")
+            except ValueError:
+                # unknown publish date → conservatively drop
+                n_dropped_total += 1
+                continue
+            if pd_dt < cutoff:
+                kept.append(aid)
+            else:
+                n_dropped_total += 1
+        fd["article_ids"] = kept
+        # Effective forecast_point for this experiment (pushed into the FD
+        # so prompt helpers can render it correctly).
+        fd["forecast_point"] = cutoff.strftime("%Y-%m-%d")
+        fd["experiment_horizon_days"] = h
+    print(f"[horizon] applied experiment_horizon; articles filtered out: {n_dropped_total}")
+    return fds
+
+
 # ---------------------------------------------------------------------------
 # Class loading
 # ---------------------------------------------------------------------------
@@ -308,9 +353,15 @@ def _metrics_single_group(preds: list[dict], hs: list[str]) -> dict:
 
 def compute_metrics(preds: list[dict]) -> dict:
     """Group predictions by (benchmark, hypothesis_set) and compute per-group
-    metrics. Handles FDs from different benchmarks (binary FB, 4-class GDELT,
-    3-class earnings) mixed in one run — previously crashed when preds[0]'s
-    hypothesis_set didn't apply to all rows."""
+    metrics. Handles FDs from different benchmarks (binary FB, 3-class GDELT
+    intensity, 3-class earnings) mixed in one run.
+
+    Additionally, for any group whose predictions carry an `fd_type` field
+    (populated by scripts/annotate_gdelt_prior_state.py), the metrics block
+    includes `by_fd_type`: per-slice breakdown into `stability` (trivial
+    status-quo) and `change` (real forecasting skill).
+    Report the `change` subset as the headline number.
+    """
     if not preds:
         return {"n": 0}
     # Group by (benchmark, hypothesis_set_tuple) — tuple so dict-keyable
@@ -319,10 +370,23 @@ def compute_metrics(preds: list[dict]) -> dict:
         key = (p.get("benchmark", "?"), tuple(p.get("hypothesis_set", [])))
         groups.setdefault(key, []).append(p)
 
+    def _with_slices(rows: list[dict], hs: list[str]) -> dict:
+        """Compute overall + per-fd_type slice metrics if any row has `fd_type`."""
+        base = _metrics_single_group(rows, hs)
+        fd_types = {r.get("fd_type") for r in rows if r.get("fd_type")}
+        if fd_types and fd_types != {"unknown"}:
+            slices: dict[str, dict] = {}
+            for t in sorted(fd_types):
+                sub = [r for r in rows if r.get("fd_type") == t]
+                if sub:
+                    slices[t] = _metrics_single_group(sub, hs)
+            base["by_fd_type"] = slices
+        return base
+
     # If only one group, return its metrics at top level (back-compat).
     if len(groups) == 1:
         (_, hs_tuple), rows = next(iter(groups.items()))
-        return _metrics_single_group(rows, list(hs_tuple))
+        return _with_slices(rows, list(hs_tuple))
 
     # Otherwise emit nested per-benchmark metrics + an overall accuracy.
     out: dict[str, Any] = {
@@ -333,7 +397,7 @@ def compute_metrics(preds: list[dict]) -> dict:
         "per_benchmark": {},
     }
     for (bench, hs_tuple), rows in groups.items():
-        out["per_benchmark"][bench] = _metrics_single_group(rows, list(hs_tuple))
+        out["per_benchmark"][bench] = _with_slices(rows, list(hs_tuple))
     return out
 
 

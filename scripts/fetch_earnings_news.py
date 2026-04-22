@@ -173,6 +173,101 @@ def fetch_yfinance_news(ticker: str, forecast_point: datetime, lookback_days: in
 
 
 # ---------------------------------------------------------------------------
+# Source 0: SEC EDGAR 8-K filings (authoritative, free, unlimited)
+# ---------------------------------------------------------------------------
+# EDGAR is the SEC's canonical filings system. 8-K = "current report",
+# typically filed by public companies around material events including
+# earnings releases. The filing itself is the primary-source announcement,
+# days (sometimes hours) before news coverage catches up. Critical signal
+# for earnings forecasting and zero-cost.
+#
+# SEC requires a User-Agent header identifying the requester (research use
+# is fine). Rate limit: 10 req/sec max. Stay well below with a 0.15s pause.
+
+SEC_UA = "EMR-ACH research (research@emr-ach.example)"
+SEC_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
+SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
+
+_CIK_CACHE: dict[str, int] | None = None
+
+
+def _load_ticker_to_cik() -> dict[str, int]:
+    """Load (or fetch) the SEC ticker → CIK mapping. Cached in-process."""
+    global _CIK_CACHE
+    if _CIK_CACHE is not None:
+        return _CIK_CACHE
+    try:
+        r = requests.get(SEC_TICKERS_URL, headers={"User-Agent": SEC_UA}, timeout=TIMEOUT)
+        if r.status_code != 200:
+            print(f"  [WARN] SEC ticker fetch: {r.status_code}")
+            _CIK_CACHE = {}
+            return _CIK_CACHE
+        data = r.json()
+        # SEC returns {"0": {"cik_str": 320193, "ticker": "AAPL", ...}, "1": {...}}
+        _CIK_CACHE = {v["ticker"].upper(): int(v["cik_str"]) for v in data.values()}
+    except Exception as e:
+        print(f"  [WARN] SEC ticker fetch failed: {e}")
+        _CIK_CACHE = {}
+    return _CIK_CACHE
+
+
+def fetch_sec_edgar(ticker: str, forecast_point: datetime,
+                    lookback_days: int, max_records: int = 10) -> list[dict]:
+    """Fetch 8-K filings for a ticker in the pre-forecast window.
+
+    Returns items in the shared article-record shape. Each filing resolves to
+    the EDGAR index URL `https://www.sec.gov/Archives/edgar/data/{cik}/{acc}/`.
+    Title is derived from the filing's `primaryDocDescription` or form+date.
+    """
+    cik_map = _load_ticker_to_cik()
+    cik = cik_map.get(ticker.upper())
+    if cik is None:
+        return []
+    try:
+        url = SEC_SUBMISSIONS_URL.format(cik=cik)
+        r = requests.get(url, headers={"User-Agent": SEC_UA}, timeout=TIMEOUT)
+        if r.status_code != 200:
+            return []
+        filings = r.json().get("filings", {}).get("recent", {})
+    except Exception as e:
+        print(f"  [WARN] SEC EDGAR {ticker}: {e}")
+        return []
+    time.sleep(0.15)  # rate-limit courtesy
+
+    start = forecast_point - timedelta(days=lookback_days)
+    end = forecast_point
+    forms = filings.get("form", [])
+    dates = filings.get("filingDate", [])
+    accs  = filings.get("accessionNumber", [])
+    descs = filings.get("primaryDocDescription", [])
+    prims = filings.get("primaryDocument", [])
+    out = []
+    for form, fdate, acc, desc, prim in zip(forms, dates, accs, descs, prims):
+        if form != "8-K":
+            continue
+        try:
+            fd_dt = datetime.strptime(fdate[:10], "%Y-%m-%d")
+        except ValueError:
+            continue
+        if not (start <= fd_dt < end):
+            continue
+        acc_nodash = acc.replace("-", "")
+        index_url = f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc_nodash}/{prim}"
+        title = f"8-K filing — {desc or 'Current Report'} ({ticker})"
+        out.append({
+            "url":         index_url,
+            "title":       title,
+            "summary":     f"SEC Form 8-K filed by {ticker} on {fdate}. Accession {acc}.",
+            "date":        fd_dt.strftime("%Y-%m-%d"),
+            "publisher":   "SEC EDGAR",
+            "provenance":  "sec-edgar",
+        })
+        if len(out) >= max_records:
+            break
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Source 1a: Finnhub /company-news (finance-first, historical, free API key)
 # ---------------------------------------------------------------------------
 

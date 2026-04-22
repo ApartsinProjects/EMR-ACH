@@ -1,4 +1,25 @@
 """
+**DEPRECATED (2026-04-22).** This is a legacy downloader used during the very
+first pilot of this project to clone MIRAI's original dataset
+(https://github.com/yecchen/MIRAI) for the Nov-2023 test set. The production
+pipeline no longer depends on MIRAI's repo or dataset — our Geopolitics
+subset is built from scratch by `scripts/build_gdelt_cameo.py` against the
+public GDELT 2.0 Knowledge Graph.
+
+MIRAI is cited in the paper as a prior-work external anchor only. Do NOT run
+this script as part of a publication build; it is retained for reproducibility
+of the very-early pilot numbers only.
+
+For the current production build, run:
+
+    python scripts/build_benchmark.py --cutoff YYYY-MM-DD
+
+which invokes the three domain-builders (GDELT-CAMEO + ForecastBench + Earnings)
+end-to-end without touching the MIRAI repo.
+
+────────────────────────────────────────────────────────────────────────────
+ORIGINAL HEADER (kept for historical reference):
+
 Download and prepare benchmark data for EMR-ACH experiments.
 
 MIRAI benchmark:

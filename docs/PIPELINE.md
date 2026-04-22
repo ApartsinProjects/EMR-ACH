@@ -14,11 +14,48 @@ fuses three inputs — a question, a candidate hypothesis set, and a pool of new
 articles published before the forecast point — into the same schema across three
 heterogeneous domains:
 
-| Domain | Benchmark source | Task |
-|---|---|---|
-| Geopolitics | GDELT-CAMEO (MIRAI methodology) | Categorize a country-pair event into a 4-class CAMEO label. |
-| Prediction markets | ForecastBench | Answer a binary Yes/No prediction-market question. |
-| Finance | Earnings (yfinance + Finnhub) | Classify a quarterly EPS report as Beat / Meet / Miss. |
+| Domain | Benchmark source | Task | Classes |
+|---|---|---|---|
+| Geopolitics | GDELT-CAMEO Geopolitics (our own build on public GDELT 2.0 KG) | Forecast country-pair **conflict intensity** on a target date from prior news | **Peace / Tension / Violence** (ordinal) |
+| Prediction markets | ForecastBench | Answer a binary Yes/No prediction-market question | Yes / No |
+| Finance | Earnings (yfinance + Finnhub) | Classify a quarterly EPS report vs analyst consensus | Beat / Meet / Miss |
+
+**Design note — GDELT-CAMEO target (v2.0, 2026-04-22):** the benchmark uses a
+3-class **intensity** reduction of the CAMEO event taxonomy (see
+[`src/common/cameo_intensity.py`](../src/common/cameo_intensity.py) for the
+mapping):
+
+  * **Peace** — CAMEO roots 01–09 (cooperative: statements, appeals, consults,
+    diplomatic / material cooperation, aid, yielding, investigations)
+  * **Tension** — roots 10–17 (non-violent friction: demands, disapproval,
+    rejection, threats, protests, force posture, reduced relations, coercion)
+  * **Violence** — roots 18–20 (physical force: assault, fight, unconventional
+    mass violence)
+
+The ordering is **ordinal** (Peace < Tension < Violence), enabling
+ordinal-error metrics alongside nominal accuracy.
+
+**Design note — stability vs change partition (all three benchmarks):** every FD
+is annotated with a domain-appropriate **`prior_state`** and partitioned:
+
+| Benchmark | prior_state source | Stability means | Change means |
+|---|---|---|---|
+| gdelt-cameo   | Modal Peace/Tension/Violence class over prior 30 days' events for the actor pair | Already-violent pair stays violent; peaceful pair stays peaceful | Onset, cessation, escalation, de-escalation |
+| earnings      | Mode of prior **4 quarters'** surprise class (Beat/Meet/Miss) for the same ticker | Chronic beater beats again; chronic misser misses again | Unexpected miss / unexpected beat / regime change |
+| forecastbench | `crowd_probability` — market's implied majority (≥0.5 → Yes, else No) | Outcome matches the market's majority call | Upset — crowd consensus contradicted by resolution |
+
+The split exposes **where forecasting skill actually matters**: status-quo FDs
+are trivially predicted by a classifier that reads the prior state; change FDs
+require genuine evidence reading. **Headline metrics are reported on the Change
+subset.** See [`scripts/annotate_prior_state.py`](../scripts/annotate_prior_state.py).
+
+**Design note — evidence channel isolation:** GDELT is used only as the
+question/label source. Evidence (for baselines and EMR-ACH) comes from
+independent editorial sources — NYT, Guardian, Google News RSS. The GDELT
+DOC API is no longer in the default `fetch_gdelt_cameo_news.py --source`
+cascade (kept as `--source gdelt` opt-in for legacy ablation). This decouples
+the retrieval channel from the label channel and makes the leakage argument
+reviewer-proof.
 
 Every FD carries a **strict temporal contract**: all linked articles are
 published before the forecast point, and every FD's resolution date is after
@@ -68,15 +105,22 @@ build_benchmark.py (orchestrator)
 │
 ├── STAGE 2 — FIRST UNIFY
 │   ├── unify_articles.py             (merge article pools; dedup by URL)
-│   └── unify_forecasts.py            (merge FD records; compute ground truth)
+│   └── unify_forecasts.py            (merge FD records; compute ground truth;
+│                                     GDELT-CAMEO uses Peace/Tension/Violence)
 │     [snapshot: 01_after_first_unify]
 │
 ├── STAGE 3 — MULTI-SOURCE PER-FD NEWS FETCH (unified 90-day analysis window)
 │   ├── fetch_forecastbench_news.py   (NYT + Guardian + Google News + GDELT DOC)
-│   ├── fetch_gdelt_cameo_news.py     (same four sources, actor-pair query)
+│   ├── fetch_gdelt_cameo_news.py     (NYT + Guardian + Google — default editorial;
+│   │                                  NO GDELT DOC — keeps label/evidence separate)
 │   └── fetch_earnings_news.py        (Finnhub + yfinance + Google News + GDELT DOC)
 │   → re-run unify_articles.py and unify_forecasts.py to include new news
 │     [snapshot: 01b_after_multi_source_news]
+│
+├── STAGE 3b — GDELT PRIOR-STATE ANNOTATION (GDELT-CAMEO only)
+│   └── annotate_gdelt_prior_state.py (adds fd_type ∈ {stability, change} +
+│                                     prior_state_30d; no new API calls)
+│     [snapshot: 01c_after_prior_state_annotation]
 │
 ├── STAGE 4 — RELEVANCE SCORING (SBERT cross-match)
 │   └── compute_relevance.py          (per-benchmark filter, top-K articles per FD)
@@ -260,23 +304,36 @@ Merges FD records from three sources into `data/unified/forecasts.jsonl`.
 Computes ground truth, attaches hypothesis definitions, and sets the
 `lookback_days = 90` analysis window (unified across all three benchmarks).
 
+For GDELT-CAMEO FDs, ground truth is computed from the event's CAMEO root
+code (via `src/common/cameo_intensity.event_to_intensity`): roots 01-09
+→ Peace, 10-17 → Tension, 18-20 → Violence. `EventBaseCode` is emitted by
+`build_gdelt_cameo.py` step 5 into `relation_query.csv` for this purpose.
+
 **Schema**:
 ```json
 {
   "id": "gdc_1234",
   "benchmark": "gdelt-cameo",
   "source": "gdelt-kg",
-  "question": "...",
+  "question": "Based on news from the preceding months, what is the dominant
+               intensity of interaction between Israel and Palestine on or
+               around 2026-03-01: peace, tension, or violence?",
   "background": "...",
-  "forecast_point": "YYYY-MM-DD",
-  "resolution_date": "YYYY-MM-DD",
-  "hypothesis_set": ["Verbal Cooperation", "Material Cooperation", "Verbal Conflict", "Material Conflict"],
-  "hypothesis_definitions": {"Verbal Cooperation": "...", ...},
-  "ground_truth": "Material Conflict",
-  "ground_truth_idx": 3,
-  "crowd_probability": null,        // only populated for ForecastBench
+  "forecast_point": "2026-03-01",
+  "resolution_date": "2026-03-01",
+  "hypothesis_set": ["Peace", "Tension", "Violence"],
+  "hypothesis_definitions": {"Peace": "...", "Tension": "...", "Violence": "..."},
+  "ground_truth": "Violence",
+  "ground_truth_idx": 2,             // ordinal: Peace=0, Tension=1, Violence=2
+  "crowd_probability": null,         // only populated for ForecastBench
   "lookback_days": 90,
-  "article_ids": []                 // populated by compute_relevance.py
+  "article_ids": [],                 // populated by compute_relevance.py
+
+  // Added by annotate_gdelt_prior_state.py (GDELT-CAMEO only; omitted elsewhere):
+  "prior_state_30d": "Violence",
+  "prior_state_stability": 0.73,     // fraction of prior 30d matching mode
+  "prior_state_n_events": 84,
+  "fd_type": "stability"             // "stability" | "change" | "unknown"
 }
 ```
 
@@ -340,7 +397,7 @@ run. Saves ~5 min per rebuild on a warm cache.
 
 ### 5.7 `relink_gdelt_context.py` — Legacy oracle fix
 
-**Why it exists**: MIRAI's original methodology uses same-day oracle Docids,
+**Why it exists**: the original (pre-2026-04-22) oracle-retrieval methodology used same-day Docids,
 which causes ground-truth leakage (the articles describe the event itself).
 Under the new *"forecast from prior news"* framing (v2.0), this step is
 partially redundant with `fetch_gdelt_cameo_news.py`. Kept for backwards
@@ -512,7 +569,7 @@ If you use this pipeline in published work, cite:
 
 Key methodology references:
 
-- **MIRAI** (Ye et al., 2024) — GDELT-CAMEO construction methodology.
+- **MIRAI** (Ye et al., 2024) — prior-work GDELT-based geopolitical forecasting benchmark; cited as external anchor only, not a shared methodology.
 - **ForecastBench** (Karger et al., 2025) — prediction-market benchmark.
 - **FactScore** (Min et al., 2023) — atomic claim decomposition (ETD).
 - **ISO-TimeML** (ISO 24617-1:2012) — temporal annotation standard (ETD).

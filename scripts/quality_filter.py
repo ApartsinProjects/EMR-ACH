@@ -176,6 +176,8 @@ def main() -> None:
     # SHIPPED-DATASET SCHEMA: strip pipeline-internal fields so forecasts_filtered.jsonl
     # is self-contained for an evaluator. Fields not in this whitelist are removed
     # from each accepted FD before writing. `metadata` is dropped entirely.
+    # Note: prior-state annotation fields (fd_type, prior_state_30d, ...) are
+    # PRESERVED — they are part of the benchmark contract for stratified metrics.
     shipped_fields = {
         "id", "benchmark", "source",
         "hypothesis_set", "hypothesis_definitions",
@@ -184,14 +186,36 @@ def main() -> None:
         "ground_truth", "ground_truth_idx",
         "crowd_probability", "lookback_days",
         "article_ids",
+        # prior-state annotation (GDELT-CAMEO only; other benchmarks omit these fields)
+        "fd_type", "prior_state_30d", "prior_state_stability", "prior_state_n_events",
     }
-    with open(OUT_OK, "w", encoding="utf-8") as f:
-        for r in accepted:
-            clean = {k: v for k, v in r.items() if k in shipped_fields}
-            f.write(json.dumps(clean, ensure_ascii=False) + "\n")
-    with open(OUT_BAD, "w", encoding="utf-8") as f:
-        for r in dropped:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    import os as _os
+    def _atomic_write_jsonl(path, records):
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            for r in records:
+                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+            f.flush()
+            try: _os.fsync(f.fileno())
+            except Exception: pass
+        _os.replace(str(tmp), str(path))
+
+    # Clean accepted records
+    cleaned_accepted = [{k: v for k, v in r.items() if k in shipped_fields} for r in accepted]
+    _atomic_write_jsonl(OUT_OK, cleaned_accepted)
+    _atomic_write_jsonl(OUT_BAD, dropped)
+
+    # Stratified slices for GDELT-CAMEO FDs: stability (trivial) vs change (real skill).
+    # See scripts/annotate_gdelt_prior_state.py for the partitioning logic.
+    OUT_CHANGE    = OUT_OK.parent / "forecasts_filtered_change.jsonl"
+    OUT_STABILITY = OUT_OK.parent / "forecasts_filtered_stability.jsonl"
+    change_subset    = [r for r in cleaned_accepted if r.get("fd_type") == "change"]
+    stability_subset = [r for r in cleaned_accepted if r.get("fd_type") == "stability"]
+    if change_subset or stability_subset:
+        _atomic_write_jsonl(OUT_CHANGE, change_subset)
+        _atomic_write_jsonl(OUT_STABILITY, stability_subset)
+        print(f"[slices] change={len(change_subset)}  stability={len(stability_subset)}  "
+              f"(unsliced/other-benchmark={len(cleaned_accepted) - len(change_subset) - len(stability_subset)})")
 
     meta = {
         "total":    len(forecasts),

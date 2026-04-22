@@ -212,7 +212,7 @@ def load_earnings_news() -> list[dict]:
 def load_gdelt_cameo() -> list[dict]:
     src = GDELT_CAMEO_FULL if GDELT_CAMEO_FULL.exists() else (GDELT_CAMEO_PLAIN if GDELT_CAMEO_PLAIN.exists() else None)
     if src is None:
-        print(f"[WARN] No MIRAI-2024 article CSV found; skipping (build still running?)")
+        print(f"[WARN] No GDELT-CAMEO article CSV found; skipping (build still running?)")
         return []
     out = []
     with open(src, encoding="utf-8") as f:
@@ -279,7 +279,7 @@ def main():
     fb_supp = load_forecastbench_supplement()
     print(f"  {len(fb_supp)} records")
 
-    print("Loading MIRAI-2024 articles...")
+    print("Loading GDELT-CAMEO articles...")
     m24 = load_gdelt_cameo()
     print(f"  {len(m24)} records")
 

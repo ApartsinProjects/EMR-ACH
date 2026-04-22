@@ -53,7 +53,7 @@ ACH/
 
 Benchmark sources (unified):
 - **ForecastBench** — binary `{Yes, No}` forecasting questions
-- **GDELT-CAMEO / MIRAI-2024** — 4-class event type `{Verbal Cooperation, Material Cooperation, Verbal Conflict, Material Conflict}`
+- **GDELT-CAMEO Geopolitics** — 3-class ordinal intensity `{Peace, Tension, Violence}` (with 4-class quad-class kept as a secondary ablation)
 - **Earnings** — 3-class `{Beat, Meet, Miss}`
 
 Every Forecast Dossier (FD) exposes: `question, hypothesis_set, hypothesis_definitions, article_ids (leakage-filtered), forecast_point, resolution_date, ground_truth, benchmark`.

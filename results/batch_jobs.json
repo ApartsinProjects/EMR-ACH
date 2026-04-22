@@ -33,5 +33,55 @@
     "batch_id": "batch_69e67de994c8819082f20702ea0e8703",
     "job_name": "emrach_full_advocates",
     "status": "completed"
+  },
+  "b2_cot_2026-01-01_r0": {
+    "batch_id": "batch_69e7d5f0a83081908364053f12e74691",
+    "job_name": "b2_cot_2026-01-01_r0",
+    "status": "completed"
+  },
+  "b1_direct_2026-01-01_r0": {
+    "batch_id": "batch_69e84659a600819084e97a8c117a5832",
+    "job_name": "b1_direct_2026-01-01_r0",
+    "status": "validating"
+  },
+  "b3_rag_2026-01-01_r0": {
+    "batch_id": "batch_69e8466293848190a77219a5dcf42bbb",
+    "job_name": "b3_rag_2026-01-01_r0",
+    "status": "completed"
+  },
+  "b3b_rag_claims_2026-01-01_r0": {
+    "batch_id": "batch_69e85916a7948190b552b6bd636fae7d",
+    "job_name": "b3b_rag_claims_2026-01-01_r0",
+    "status": "completed"
+  },
+  "b3b_rag_claims_2026-01-01_r1": {
+    "batch_id": "batch_69e85c2d22d88190867980b5140c7e2c",
+    "job_name": "b3b_rag_claims_2026-01-01_r1",
+    "status": "completed"
+  },
+  "etd_etd_v2_chunked__chunk_000_of_005": {
+    "batch_id": "batch_69e8f96604308190be4be97f4b177532",
+    "job_name": "etd_etd_v2_chunked__chunk_000_of_005",
+    "status": "in_progress"
+  },
+  "etd_etd_v2_chunked__chunk_001_of_005": {
+    "batch_id": "batch_69e8f979e79c8190bb5fd8556ca7d521",
+    "job_name": "etd_etd_v2_chunked__chunk_001_of_005",
+    "status": "in_progress"
+  },
+  "etd_etd_v2_chunked__chunk_002_of_005": {
+    "batch_id": "batch_69e8f98c022c8190bdfe4e050e1f5439",
+    "job_name": "etd_etd_v2_chunked__chunk_002_of_005",
+    "status": "in_progress"
+  },
+  "etd_etd_v2_chunked__chunk_003_of_005": {
+    "batch_id": "batch_69e8f9a0e1908190b05dd13d9f28a581",
+    "job_name": "etd_etd_v2_chunked__chunk_003_of_005",
+    "status": "in_progress"
+  },
+  "etd_etd_v2_chunked__chunk_004_of_005": {
+    "batch_id": "batch_69e8f9aa5a2481908634a7e40cc101dd",
+    "job_name": "etd_etd_v2_chunked__chunk_004_of_005",
+    "status": "in_progress"
   }
 }

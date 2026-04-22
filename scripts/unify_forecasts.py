@@ -35,7 +35,7 @@ from pathlib import Path as _Path
 _sys.path.insert(0, str(_Path(__file__).parent))
 from _fast_jsonl import loads as _j_loads, dumps as _j_dumps
 
-# MIRAI relation_query.csv has Docids fields that can exceed Python's default
+# The GDELT-CAMEO relation_query.csv has Docids fields that can exceed Python's default
 # 128k CSV field limit. Bump to the max.
 csv.field_size_limit(min(sys.maxsize, 2**31 - 1))
 
@@ -54,28 +54,43 @@ OUT_FC       = UNIFIED / "forecasts.jsonl"
 OUT_META     = UNIFIED / "forecasts_meta.json"
 
 FB_HYP       = ["Yes", "No"]
-# MIRAI hypotheses use VERBAL labels, not CAMEO codes, so any downstream prompt
-# builder can construct a prompt from the FD record alone (no external lookup).
-GDELT_CAMEO_HYP    = ["Verbal Cooperation", "Material Cooperation",
-                "Verbal Conflict",     "Material Conflict"]
-GDELT_CAMEO_HYP_CODES = ["VC", "MC", "VK", "MK"]  # parallel; only used for legacy mapping
+
+# GDELT-CAMEO hypothesis set (2026-04-22 redesign):
+#   3-class intensity taxonomy — Peace / Tension / Violence — mapped from
+#   CAMEO root codes. See src/common/cameo_intensity.py for the full mapping
+#   and scripts/annotate_gdelt_prior_state.py for the stability/change slice
+#   computation that accompanies this label set.
+#
+# Motivation: the prior 4-class VC/MC/VK/MK framing had two semantically-close
+# pairs that even competent LLMs struggled to distinguish (VC vs MC, VK vs MK).
+# The Peace/Tension/Violence reduction has clearly distinguishable class
+# boundaries, is ordinally ordered (Peace < Tension < Violence), and maps
+# cleanly to the underlying CAMEO root taxonomy.
+from src.common.cameo_intensity import (
+    INTENSITY_CLASSES as _GDC_INTENSITY,
+    INTENSITY_DEFINITIONS as _GDC_INTENSITY_DEFS,
+)
+GDELT_CAMEO_HYP        = list(_GDC_INTENSITY)                  # ["Peace","Tension","Violence"]
+GDELT_CAMEO_HYP_CODES  = ["P", "T", "V"]                       # compact labels
+GDELT_CAMEO_HYP_DEFS   = dict(_GDC_INTENSITY_DEFS)
+
 FB_LOOKBACK  = 90   # unified 'forecast from prior news' analysis window
 GDELT_CAMEO_LOOKBACK = 90   # matches FB + earnings for uniform task framing
+
+# Forecast horizon h — evidence cutoff is resolution_date − h days.
+# Default 14 (2 weeks): the system's last permissible article is 2 weeks
+# before the outcome, so the task is genuine forecasting (not nowcasting).
+# Overridable per-benchmark via configs/default_config.yaml -> benchmarks.<name>.forecast_horizon_days
+# and injected into this module at build time via environment variables set
+# by scripts/build_benchmark.py.
+import os as _os
+FB_FORECAST_HORIZON_DAYS      = int(_os.environ.get("EMRACH_FB_HORIZON_DAYS", "14"))
+GDELT_FORECAST_HORIZON_DAYS   = int(_os.environ.get("EMRACH_GDELT_HORIZON_DAYS", "14"))
+EARN_FORECAST_HORIZON_DAYS    = int(_os.environ.get("EMRACH_EARN_HORIZON_DAYS", "14"))
 
 FB_HYP_DEFS = {
     "Yes": "The event or outcome described in the question occurs by the resolution date.",
     "No":  "The event or outcome described in the question does not occur by the resolution date.",
-}
-
-GDELT_CAMEO_HYP_DEFS = {
-    "Verbal Cooperation":  ("Diplomatic statements, endorsements, public support, "
-                            "commitments, expressions of intent between the two countries."),
-    "Material Cooperation":("Tangible cooperative actions between the two countries: aid, "
-                            "signed agreements, material support, joint operations, economic cooperation."),
-    "Verbal Conflict":     ("Public criticism, condemnation, rejection, demands, threats, "
-                            "or protests between the two countries."),
-    "Material Conflict":   ("Physical confrontation or coercive actions: arrests, seizures, "
-                            "sanctions enforced, troop deployments, attacks, or other tangible hostile acts."),
 }
 
 EARN_HYP_DEFS = {
@@ -128,6 +143,11 @@ def load_forecastbench(url2aid: dict[str, str]) -> list[dict]:
         gt = int(q.get("ground_truth", 0))
         gt_label = FB_HYP[0] if gt == 1 else FB_HYP[1]
         res_date = q.get("resolution_date", "")
+        # forecast_point stores the max-evidence-date (= resolution_date). The
+        # actual experimental cutoff is applied at runtime: the baseline runner
+        # filters article_ids to those with publish_date < (resolution_date −
+        # experiment_horizon_days). Default horizon is emitted into the FD as
+        # `default_horizon_days` (see v2.1 design, docs/FORECAST_DOSSIER.md §3).
         forecast_point = res_date
         urls = q2urls.get(qid, [])
         article_ids = sorted({url2aid[u] for u in urls if u in url2aid})
@@ -145,6 +165,7 @@ def load_forecastbench(url2aid: dict[str, str]) -> list[dict]:
             "ground_truth_idx": 0 if gt == 1 else 1,
             "crowd_probability": q.get("crowd_probability"),
             "lookback_days": FB_LOOKBACK,
+            "default_horizon_days": FB_FORECAST_HORIZON_DAYS,
             "article_ids": article_ids,
             "metadata": {
                 "category":       q.get("category", ""),
@@ -188,6 +209,7 @@ def load_gdelt_cameo(url2aid: dict[str, str]) -> list[dict]:
                 url = row.get("URL", "")
                 if did and url:
                     docid_to_url[did] = url
+    from src.common.cameo_intensity import event_to_intensity, INTENSITY_RANK
     out = []
     with open(GDELT_CAMEO_Q, encoding="utf-8") as f:
         for row in csv.DictReader(f, delimiter="\t"):
@@ -197,11 +219,19 @@ def load_gdelt_cameo(url2aid: dict[str, str]) -> list[dict]:
             s_name = row.get("Actor1CountryName", "") or s
             o_name = row.get("Actor2CountryName", "") or o
             date = (row.get("DateStr", "") or "")[:10]
-            quad_code = row.get("QuadLabel", "")
-            if quad_code not in GDELT_CAMEO_HYP_CODES:
+            # EventBaseCode is the 3- or 4-digit CAMEO code; we derive the
+            # 3-class intensity label (Peace/Tension/Violence) from its root.
+            event_base_code = row.get("EventBaseCode", "") or row.get("QuadLabel", "")
+            intensity = event_to_intensity(event_base_code)
+            if intensity is None:
+                # If EventBaseCode absent (older relation_query.csv format), fall
+                # back to the QuadLabel + lossy mapping, keeping the FD.
+                from src.common.cameo_intensity import quad_to_intensity_maybe
+                intensity = quad_to_intensity_maybe(row.get("QuadLabel", ""))
+            if intensity is None:
                 continue
-            gt_idx = GDELT_CAMEO_HYP_CODES.index(quad_code)
-            gt_label = GDELT_CAMEO_HYP[gt_idx]  # verbal label
+            gt_idx = INTENSITY_RANK[intensity]
+            gt_label = intensity  # already the human-readable class name
             docids_raw = row.get("Docids", "")
             try:
                 docids = [str(d) for d in json.loads(docids_raw.replace("'", '"'))] if docids_raw.startswith("[") else []
@@ -210,11 +240,16 @@ def load_gdelt_cameo(url2aid: dict[str, str]) -> list[dict]:
             urls = [docid_to_url[d] for d in docids if d in docid_to_url]
             article_ids = sorted({url2aid[u] for u in urls if u in url2aid})
 
-            # Natural-language question. No dataset-specific codes; a prompt
-            # builder can form a full prompt from this FD alone.
+            # Natural-language question framing: forecast the conflict-intensity
+            # level from prior news. No CAMEO codes surfaced in the prompt.
             question = (f"Based on news from the preceding months, what is the dominant "
-                        f"bilateral interaction class between {s_name} and {o_name} "
-                        f"on or around {date}?")
+                        f"intensity of interaction between {s_name} and {o_name} "
+                        f"on or around {date}: peace, tension, or violence?")
+
+            # forecast_point = resolution date (max evidence date). The
+            # experimental horizon filter is applied at runtime; default
+            # horizon is emitted below as `default_horizon_days`.
+            forecast_point_str = date
 
             out.append({
                 "id": f"gdc_{qid}",
@@ -223,22 +258,26 @@ def load_gdelt_cameo(url2aid: dict[str, str]) -> list[dict]:
                 "hypothesis_set": GDELT_CAMEO_HYP,
                 "hypothesis_definitions": GDELT_CAMEO_HYP_DEFS,
                 "question": question,
-                "background": (f"This is a bilateral interaction forecasting question. "
-                               f"The subject country is {s_name} ({s}); the object country "
-                               f"is {o_name} ({o}). The forecasting date is {date}."),
-                "forecast_point": date,
+                "background": (f"Forecast the conflict-intensity level (Peace, Tension, or "
+                               f"Violence) between {s_name} ({s}) and {o_name} ({o}) on "
+                               f"{date}, using only news published at least "
+                               f"{GDELT_FORECAST_HORIZON_DAYS} days before that date."),
+                "forecast_point": forecast_point_str,
                 "resolution_date": date,
                 "ground_truth": gt_label,
                 "ground_truth_idx": gt_idx,
                 "crowd_probability": None,
                 "lookback_days": GDELT_CAMEO_LOOKBACK,
+                "default_horizon_days": GDELT_FORECAST_HORIZON_DAYS,
                 "article_ids": article_ids,
                 "metadata": {
-                    # structured codes kept here (for retrieval-side matching
-                    # such as actor-pair lookups), NOT for prompt construction.
+                    # Retrieval + leakage-check + prior-state annotation side
+                    # rely on these structured fields; downstream prompt
+                    # construction is natural-language only.
                     "actors":              [s, o],
                     "actor_names":         [s_name, o_name],
-                    "ground_truth_code":   quad_code,
+                    "event_base_code":     event_base_code,
+                    "intensity_class":     intensity,
                     "hypothesis_codes":    GDELT_CAMEO_HYP_CODES,
                     "original_query_id":   qid,
                 },

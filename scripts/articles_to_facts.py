@@ -303,6 +303,10 @@ def main():
                     help="Re-process articles even if already present in facts.current for this run_id.")
     ap.add_argument("--max-retries", type=int, default=3,
                     help="Max attempts per article across runs (counts from facts.errors.jsonl).")
+    ap.add_argument("--chunk-size", type=int, default=0,
+                    help="If >0, split requests into concurrent sub-batches of this size via "
+                         "src.common.multibatch.run_multibatch (5000 is a good default for >10k runs; "
+                         "completes in ~1-3h instead of 4-12h for one giant batch).")
     args = ap.parse_args()
 
     extract_run = build_run_id(args.run_id)
@@ -350,13 +354,21 @@ def main():
             print("\n[dry-run] Sample request 2 custom_id:", requests[1].custom_id)
         return
 
-    # Run via BatchClient (direct for smoke, batch otherwise)
+    # Run via BatchClient (direct for smoke, batch otherwise).
+    # For large corpora, --chunk-size enables concurrent sub-batches (see
+    # src/common/multibatch.py for details). Typical sweet spot: 5000 per chunk.
     cfg = get_config()
     mode = "direct" if args.smoke else "batch"
     client = BatchClient(mode=mode, config=cfg)
     job_name = f"etd_{extract_run}" + ("_smoke" if args.smoke else "")
-    print(f"[run] mode={mode} job_name={job_name}")
-    results = client.run(requests, job_name=job_name)
+    if args.chunk_size > 0 and mode == "batch" and len(requests) > args.chunk_size:
+        from src.common.multibatch import run_multibatch
+        print(f"[run] mode=multibatch  chunk_size={args.chunk_size}  job_name={job_name}")
+        results = run_multibatch(client, requests, job_name=job_name,
+                                  chunk_size=args.chunk_size)
+    else:
+        print(f"[run] mode={mode} job_name={job_name}")
+        results = client.run(requests, job_name=job_name)
 
     # Parse + validate + persist
     started_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00","Z")

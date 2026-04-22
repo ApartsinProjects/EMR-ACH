@@ -194,7 +194,7 @@ def main():
     all_forecasts = [_j_loads(l) for l in open(FC_FILE, encoding="utf-8")]
     all_articles = [_j_loads(l) for l in open(ART_FILE, encoding="utf-8")]
 
-    # Subset by benchmark/provenance so we don't embed MIRAI's 178K articles
+    # Subset by benchmark/provenance so we don't embed GDELT-CAMEO's 178K articles
     # when we only need to score ForecastBench cross-matches.
     if args.benchmark_filter:
         bench = args.benchmark_filter

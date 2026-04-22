@@ -1,5 +1,5 @@
 """
-Fetch full article text for MIRAI-2024 news articles.
+Fetch full article text for GDELT-CAMEO news articles.
 
 Reads data/gdelt_cameo/data_news.csv (URLs from GDELT KG pipeline),
 downloads and extracts text with trafilatura, and writes
@@ -64,7 +64,7 @@ def main():
     parser.add_argument("--all", action="store_true")
     parser.add_argument("--workers", type=int, default=12)
     parser.add_argument("--only-referenced", action="store_true",
-                        help="Only fetch URLs whose art_id is referenced by a MIRAI-2024 "
+                        help="Only fetch URLs whose art_id is referenced by a GDELT-CAMEO "
                              "FD in data/unified/forecasts.jsonl (saves ~94%%).")
     args = parser.parse_args()
 
@@ -92,7 +92,7 @@ def main():
         before = len(df)
         df = df[df["URL"].fillna("").apply(lambda u: _art_id(u) in needed_aids if u else False)]
         print(f"--only-referenced: filtered {before} -> {len(df)} URLs "
-              f"(referenced by MIRAI FDs)")
+              f"(referenced by GDELT-CAMEO FDs)")
 
     # skip already-fetched
     fetched_ids: set[int] = set()

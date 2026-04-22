@@ -1,15 +1,14 @@
 """
-Build MIRAI-2024: a leakage-free CAMEO event forecasting benchmark.
+Build the GDELT-CAMEO Geopolitics subset — a leakage-guarded bilateral-event
+forecasting benchmark derived from GDELT 2.0.
 
-Replicates the MIRAI dataset construction pipeline (Ye et al., arXiv:2407.01231)
-for Aug-Dec 2024 data, which is entirely post GPT-4o training cutoff (Apr 2024).
-
-Pipeline:
-  Step 1 - Download GDELT 2.0 KG export CSVs for the date range
-  Step 2 - Merge, clean, filter (same-date, country codes, CAMEO codes)
+Pipeline (community-standard GDELT filtering; the reliability threshold
+`min_daily_mentions >= 50` is a long-standing GDELT-community convention):
+  Step 1 - Download GDELT 2.0 KG export CSVs for the configured date range
+  Step 2 - Merge, clean, filter (same-date pairs, country codes, CAMEO codes)
   Step 3 - Filter by source reliability (>= MIN_DAILY_MENTIONS)
   Step 4 - Generate test queries for TEST_MONTH
-  Step 5 - Write MIRAI-format output files
+  Step 5 - Write FD-construction inputs (data_kg.csv + relation_query.csv)
 
 Output: data/gdelt_cameo/
   data_kg.csv          - knowledge graph (events with article links)
@@ -80,7 +79,9 @@ QUAD_MAP = {"1": "VC", "2": "MC", "3": "VK", "4": "MK"}
 
 
 def load_info():
-    """Load country and CAMEO lookup tables from MIRAI info files."""
+    """Load country and CAMEO lookup tables from info files
+    (ISO country codes + CAMEO event-code reference, both in
+    benchmark/data/reference/)."""
     iso2country, cameo2name = {}, {}
     iso_file = INFO / "iso_country_names.txt"
     cameo_file = INFO / "cameo_codes.txt"
@@ -408,7 +409,8 @@ def step4_build_dataset(tmp_dir: Path, out_dir: Path):
 
 
 def step5_relation_query(df_test: pd.DataFrame, df_full: pd.DataFrame, test_dir: Path):
-    """Generate (date, s, ?, o) query format matching MIRAI's relation_query.csv."""
+    """Generate (date, actor_s, ?, actor_o) query records — the raw input that
+    unify_forecasts.py turns into one FD per row."""
 
     # build RelQueryCode = (date, s, ?, o)
     df_test = df_test.copy()
@@ -446,7 +448,12 @@ def step5_relation_query(df_test: pd.DataFrame, df_full: pd.DataFrame, test_dir:
     df_q["DateNLP"]    = pd.to_datetime(df_q["DateStr"], errors="coerce").dt.strftime("%B %d, %Y")
     df_q["QueryId"]    = range(1, len(df_q) + 1)
 
-    # quad class label (VC/MC/VK/MK) for the top answer
+    def _top_event_base_code(rels):
+        """Primary EventBaseCode for this test query (first in sorted answer list)."""
+        return rels[0] if rels else ""
+
+    # Quad label (legacy) + the primary EventBaseCode (needed downstream for the
+    # Peace/Tension/Violence mapping; see src/common/cameo_intensity.py).
     def top_quad(rels):
         for r in (rels or []):
             rc = int(r[:2]) if r[:2].isdigit() else 0
@@ -456,12 +463,13 @@ def step5_relation_query(df_test: pd.DataFrame, df_full: pd.DataFrame, test_dir:
             return "MK"
         return "VK"
 
-    df_q["QuadLabel"] = df_q["AnswerList"].map(top_quad)
+    df_q["QuadLabel"]     = df_q["AnswerList"].map(top_quad)
+    df_q["EventBaseCode"] = df_q["AnswerList"].map(_top_event_base_code)
 
     out_cols = ["QueryId", "DateStr", "DateNLP", "RelQueryCode",
                 "Actor1CountryCode", "Actor1CountryName",
                 "Actor2CountryCode", "Actor2CountryName",
-                "AnswerList", "AnswerDict", "QuadLabel",
+                "AnswerList", "AnswerDict", "QuadLabel", "EventBaseCode",
                 "Docids"]
     df_q[[c for c in out_cols if c in df_q.columns]].to_csv(
         test_dir / "relation_query.csv", index=False, sep="\t"

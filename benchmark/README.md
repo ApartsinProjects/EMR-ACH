@@ -8,9 +8,11 @@ A leakage-free, multi-domain benchmark of **Forecast Dossiers (FDs)** pairing re
 
 Three tracks are combined into a single unified schema:
 
-- **`forecastbench`** — resolved questions from the upstream ForecastBench project (`polymarket`, `metaculus`, `manifold`, `infer`).
-- **`gdelt_cameo`** — GDELT-CAMEO event-forecasting queries over the quad-class CAMEO taxonomy (Verbal-Coop, Material-Coop, Verbal-Conflict, Material-Conflict). Methodology follows Ye et al., "MIRAI: Evaluating LLM Agents for Event Forecasting" ([arXiv:2407.01231](https://arxiv.org/abs/2407.01231)); we re-implement their pipeline against fresh GDELT data rather than redistributing their dataset.
-- **`earnings`** — S&P earnings-surprise questions (Beat / Meet / Miss) built from `yfinance`.
+- **`forecastbench`** — resolved questions from the upstream ForecastBench project (`polymarket`, `metaculus`, `manifold`, `infer`). v2.1 default includes **all subjects**; set `EMRACH_FB_SUBJECT_FILTER=geopolitics` to restrict to the legacy geopolitics-only subset.
+- **`gdelt_cameo`** — GDELT-CAMEO Geopolitics: country-pair event-forecasting queries built from scratch on the public GDELT 2.0 Knowledge Graph. Primary target is the 3-class ordinal intensity (Peace / Tension / Violence, derived from CAMEO root codes 01–09 / 10–17 / 18–20). MIRAI (Ye et al. 2024, [arXiv:2407.01231](https://arxiv.org/abs/2407.01231)) is cited as prior work on the same data source; we share no code or methodology (different target, horizon, retrieval, evaluation protocol).
+- **`earnings`** — S&P 500 earnings-surprise questions (Beat / Meet / Miss) built from `yfinance`.
+
+**Primary task (v2.1).** Regardless of domain, every FD's primary prediction target is the binary **Comply vs Surprise** label: *will the status-quo expectation hold or break?* Domain-specific multi-class labels (Peace/Tension/Violence, Beat/Meet/Miss, Yes/No) are preserved as secondary ablation targets under `x_multiclass_*` fields. See [`docs/FORECAST_DOSSIER.md`](../docs/FORECAST_DOSSIER.md) for the full contract.
 
 ## Folder layout
 

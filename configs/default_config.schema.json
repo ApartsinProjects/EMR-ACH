@@ -8,6 +8,7 @@
   "properties": {
     "model_cutoff":       {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
     "cutoff_buffer_days": {"type": "integer", "minimum": 0, "maximum": 3650},
+    "default_forecast_horizon_days": {"type": "integer", "minimum": 0, "maximum": 3650},
 
     "output": {
       "type": "object",
@@ -24,7 +25,8 @@
           "type": "object",
           "properties": {
             "enabled":                   {"type": "boolean"},
-            "prediction_market_sources": {"type": "array", "items": {"type": "string"}}
+            "prediction_market_sources": {"type": "array", "items": {"type": "string"}},
+            "forecast_horizon_days":     {"type": "integer", "minimum": 0, "maximum": 3650}
           },
           "additionalProperties": false
         },
@@ -38,7 +40,8 @@
             "test_month":           {"type": "string", "pattern": "^\\d{6}$"},
             "all_end":              {"type": "string", "pattern": "^\\d{6}$"},
             "min_daily_mentions":   {"type": "integer", "minimum": 1},
-            "max_download_workers": {"type": "integer", "minimum": 1, "maximum": 64}
+            "max_download_workers": {"type": "integer", "minimum": 1, "maximum": 64},
+            "forecast_horizon_days":{"type": "integer", "minimum": 0, "maximum": 3650}
           },
           "additionalProperties": false
         },
@@ -50,7 +53,8 @@
             "start":     {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
             "end":       {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
             "tickers":   {"oneOf": [{"type": "null"}, {"type": "array", "items": {"type": "string"}}]},
-            "threshold": {"type": "number", "minimum": 0, "maximum": 1}
+            "threshold": {"type": "number", "minimum": 0, "maximum": 1},
+            "forecast_horizon_days": {"type": "integer", "minimum": 0, "maximum": 3650}
           },
           "additionalProperties": false
         }
