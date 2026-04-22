@@ -2,9 +2,15 @@
 
 ## Overview
 
-Full implementation plan for reproducing and extending the EMR-ACH pipeline for publication.
+**Task framing (pick-only, 2026-04-21 revision).**
+Every baseline and the EMR-ACH system solves the same task: **given a forecasting question, a candidate hypothesis set, and a set of news articles retrieved for that question, select the single most likely hypothesis.** No probability distributions, no calibration, no confidence scores. Models return exactly one label from the hypothesis set.
+
+Headline metric: **selection accuracy**. Secondary metrics (to expose class-imbalance effects): **macro-F1**, **per-class recall**, and **confusion matrix**. Bootstrap 95% CIs on all point estimates. No Brier, no ECE, no KL, no Platt scaling.
+
 Every experiment uses the **OpenAI Batch API** (50% cost discount, mandatory).
-Every experiment group begins with a **smoke test** (5 queries, direct API) for prompt debugging.
+Every experiment group begins with a **sync smoke test** (5–10 queries, direct API) for prompt debugging.
+
+**Model**: `gpt-4o-mini-2024-07-18` throughout (cost-optimized profile, 2026-04-21).
 
 ---
 
@@ -12,298 +18,231 @@ Every experiment group begins with a **smoke test** (5 queries, direct API) for 
 
 ```
 ACH/
-├── EXPERIMENT_PLAN.md        ← this file
+├── EXPERIMENT_PLAN.md           ← this file
 ├── requirements.txt
-├── config.yaml               ← defaults; overridden per experiment
-├── .env.example
+├── config.yaml
+├── benchmark/
+│   ├── configs/baselines.yaml   ← shared defaults + per-baseline overrides
+│   ├── data/{cutoff}/           ← published benchmark (forecasts + articles)
+│   ├── audit/{cutoff}/          ← diagnostics, build snapshots
+│   ├── evaluation/baselines/    ← B1–B9 methods (all pick-only)
+│   └── results/{cutoff}/{method}/{run_id}/
 ├── src/
-│   ├── config.py
-│   ├── batch_client.py       ← OpenAI Batch API wrapper (core)
-│   ├── data/
-│   │   ├── mirai.py
-│   │   └── forecastbench.py
-│   ├── pipeline/
-│   │   ├── prompts.py        ← load YAML templates
-│   │   ├── indicators.py     ← Step 1: contrastive indicator generation
-│   │   ├── influence.py      ← Step 2: influence matrix I
-│   │   ├── retrieval.py      ← Step 3: RAG (Weaviate or mock)
-│   │   ├── presence.py       ← Step 4: analysis matrix A + background row
-│   │   ├── aggregation.py    ← Step 5: diagnosticity-weighted aggregation
-│   │   ├── calibration.py    ← Platt scaling (fit + apply)
-│   │   ├── deep_analysis.py  ← Step 7: V/M disambiguation
-│   │   └── multi_agent.py    ← adversarial debate variant
-│   ├── eval/
-│   │   └── metrics.py        ← F1, ECE, KL, accuracy, bootstrap CIs
-│   └── baselines/
-│       ├── direct_prompting.py
-│       ├── cot.py
-│       └── rag_only.py
-├── prompts/                  ← YAML prompt templates (versioned)
-│   ├── indicators.yaml
-│   ├── influence.yaml
-│   ├── presence.yaml
-│   ├── background_prior.yaml
-│   ├── deep_analysis.yaml
-│   ├── multiagent_advocate.yaml
-│   ├── multiagent_judge.yaml
-│   ├── direct.yaml
-│   └── cot.yaml
-├── experiments/
-│   ├── runner.py             ← shared utilities
-│   ├── 00_smoke/             ← DEBUG: 5 queries, direct API
-│   │   ├── smoke_indicators.py
-│   │   ├── smoke_influence.py
-│   │   ├── smoke_presence.py
-│   │   ├── smoke_deep_analysis.py
-│   │   ├── smoke_pipeline_e2e.py
-│   │   └── smoke_multiagent.py
-│   ├── 01_baselines/
-│   │   └── run_baselines.py
-│   ├── 02_emrach/
-│   │   └── run_emrach.py     ← staged build-up (base → full)
-│   ├── 03_ablation/
-│   │   └── run_ablation.py
-│   ├── 04_multiagent/
-│   │   └── run_multiagent.py
-│   └── 05_forecastbench/
-│       └── run_forecastbench.py
+│   ├── batch_client.py          ← OpenAI Batch API wrapper (core)
+│   └── pipeline/
+│       ├── prompts.py
+│       ├── indicators.py        ← Step 1: contrastive indicator generation
+│       ├── influence.py         ← Step 2: influence matrix I
+│       ├── retrieval.py         ← Step 3: SBERT + MMR retrieval
+│       ├── presence.py          ← Step 4: analysis matrix A
+│       ├── aggregation.py       ← Step 5: A·I → score vector → argmax
+│       ├── deep_analysis.py     ← Step 7: evidence disambiguation
+│       └── multi_agent.py       ← adversarial debate variant
 ├── analysis/
-│   ├── compute_metrics.py
-│   ├── compare_systems.py
-│   └── generate_paper_figures.py
-├── data/
-│   └── README.md             ← instructions for obtaining MIRAI + ForecastBench
-└── results/                  ← auto-created; gitignored
-    ├── raw/                  ← raw batch outputs (.jsonl)
-    ├── processed/            ← parsed results per experiment
-    └── figures/              ← updated paper figures from real data
+│   ├── compute_metrics.py       ← accuracy, macro-F1, per-class recall, bootstrap CIs
+│   └── compare_systems.py       ← LaTeX tables
+└── results/
+    └── figures/                 ← bar charts, confusion matrices
 ```
 
 ---
 
-## Phase 0: Environment Setup
+## Phase 0: Environment & Benchmark Build
 
-**Duration:** 1 day  
-**Goal:** Working data pipeline, no LLM calls yet.
+**Duration**: 1 day. No LLM calls for the build itself (SBERT embeddings only).
 
-### Steps
-1. `pip install -r requirements.txt`
-2. Copy `.env.example` → `.env`, fill in OPENAI_API_KEY
-3. Download MIRAI benchmark (see `data/README.md`)
-4. Index MIRAI news corpus into Weaviate (or use mock retrieval during smoke tests)
-5. Download ForecastBench geopolitics/conflict subset (300 questions)
-6. Run `python -c "from src.data.mirai import MiraiDataset; d=MiraiDataset(); print(len(d))"` to verify
+Benchmark sources (unified):
+- **ForecastBench** — binary `{Yes, No}` forecasting questions
+- **GDELT-CAMEO / MIRAI-2024** — 4-class event type `{Verbal Cooperation, Material Cooperation, Verbal Conflict, Material Conflict}`
+- **Earnings** — 3-class `{Beat, Meet, Miss}`
 
-### Data formats assumed
-- MIRAI queries: JSONL with fields: `id, timestamp, subject, relation, object, label, doc_ids`
-- MIRAI articles: JSONL with fields: `id, title, text, abstract, date, source`
-- ForecastBench: JSONL with fields: `id, question, resolution_date, ground_truth, crowd_probability, category`
+Every Forecast Dossier (FD) exposes: `question, hypothesis_set, hypothesis_definitions, article_ids (leakage-filtered), forecast_point, resolution_date, ground_truth, benchmark`.
+
+**Leakage guards** (both enforced at build time):
+1. Article-level: `article.publish_date < fd.forecast_point`
+2. Training-level: `fd.resolution_date > model_cutoff + buffer`
+
+Run `scripts/build_benchmark.py --cutoff YYYY-MM-DD` to (re)build. Output goes to `benchmark/data/{cutoff}/`; snapshots and drop-reason audits go to `benchmark/audit/{cutoff}/`.
 
 ---
 
 ## Phase 1: Smoke Tests (Prompt Debugging)
 
-**Duration:** 2-3 days  
-**Goal:** Each pipeline prompt produces valid, parseable output before batching 100 queries.
-**API mode:** DIRECT (no batch — need fast iteration)  
-**N queries:** 5  
-**Model:** gpt-4o-mini (cheap for debugging)
+**Duration**: 1–2 days.
+**API mode**: sync (`--sync --smoke 10`) for fast iteration.
+**Model**: `gpt-4o-mini`.
 
-### Smoke test protocol (each stage)
-Each smoke script:
-1. Loads 5 MIRAI queries
-2. Calls the LLM 5× with the stage prompt
-3. Pretty-prints inputs and outputs
-4. Validates JSON structure
-5. Reports any parse failures
-6. Reports cost estimate
+Every baseline and every EMR-ACH pipeline stage has a smoke test that:
+1. Loads 10 FDs (mixed across all three benchmark sources).
+2. Issues the stage's prompt to the LLM synchronously.
+3. Validates response shape: must be JSON of the form `{"prediction": "<one of hypothesis_set>", "reasoning": "<short>"}`.
+4. Logs prompt+response to `benchmark/audit/{cutoff}/smoke/{method}/`.
+5. Reports parse failures and off-label predictions (prediction not in `hypothesis_set`).
 
-**Iterate:** Fix prompt YAML, re-run, until 5/5 parse correctly and outputs look sensible.
+Iterate on YAML prompt templates until **10/10 parse correctly and predictions are all in `hypothesis_set`** for each stage.
 
-### Stage-specific smoke scripts
+Per-stage smoke scripts:
 
-| Script | Tests | Success criterion |
-|--------|-------|-------------------|
-| `smoke_indicators.py` | Step 1: indicator generation | 24 indicators, valid JSON, all 4 hypotheses covered |
-| `smoke_influence.py` | Step 2: influence scoring | 24×4 matrix, values in [0,1] |
-| `smoke_presence.py` | Step 4: presence scoring | n×24 matrix per query, values in [0,1] |
-| `smoke_deep_analysis.py` | Step 7: V/M classification | classification in valid set, valid JSON |
-| `smoke_pipeline_e2e.py` | Full pipeline (steps 1-7) | ranked output, KL < 1.0 for at least 3/5 queries |
-| `smoke_multiagent.py` | Multi-agent debate | advocate + judge output parseable |
+| Script                      | Tests                                         | Success criterion                           |
+|-----------------------------|-----------------------------------------------|---------------------------------------------|
+| `smoke_indicators.py`       | Step 1: contrastive indicator generation      | 24 indicators, valid JSON, all hypotheses covered |
+| `smoke_influence.py`        | Step 2: influence scoring                     | 24 × |H| matrix, values in {-1, 0, +1} or [-1, 1] |
+| `smoke_presence.py`         | Step 4: per-article presence scoring          | n × 24 matrix, values in [0, 1]             |
+| `smoke_deep_analysis.py`    | Step 7: evidence disambiguation               | classification in valid set, valid JSON     |
+| `smoke_pipeline_e2e.py`     | Full pipeline → final pick                    | 10/10 produce a valid hypothesis label      |
+| `smoke_multiagent.py`       | Debate + judge → final pick                   | judge outputs one of `hypothesis_set`       |
 
-**Estimated cost (smoke phase):** ~$0.50 total (gpt-4o-mini, 5 queries × 6 stages)
+**Smoke cost**: < $0.10 total.
 
 ---
 
-## Phase 2: Baseline Experiments (B1-B3)
+## Phase 2: Baselines (B1–B9, pick-only)
 
-**Duration:** 1 day  
-**API mode:** BATCH  
-**N queries:** 100 (full MIRAI test set)  
-**Model:** gpt-4o  
+**Duration**: 1 day.
+**API mode**: Batch.
+**N FDs**: full benchmark (whatever the cutoff yields, typically 2–3k).
+**Model**: `gpt-4o-mini`.
 
-### B1: Direct Prompting
-- 1 LLM call per query
-- Prompt: query context only, no retrieval, no reasoning
-- Output: ranked 4-class prediction + probability distribution
-- **Batch size:** 100 requests
-- **Estimated tokens:** 100 × 1,200 = 120k tokens
-- **Estimated cost (batch):** $0.30
+All nine baselines return **a single hypothesis pick** (no probabilities, no confidence). See `benchmark/configs/baselines.yaml` for exact parameters.
 
-### B2: Chain-of-Thought
-- 1 LLM call per query, system prompt instructs step-by-step reasoning
-- Output: CoT text + final ranked prediction
-- **Batch size:** 100 requests
-- **Estimated tokens:** 100 × 2,500 = 250k tokens
-- **Estimated cost (batch):** $0.63
+| ID  | Name                   | Mechanism                                                             | Calls / FD |
+|-----|------------------------|-----------------------------------------------------------------------|-----------:|
+| B1  | Direct                 | Single call, question + hypotheses, no articles                       | 1          |
+| B2  | Chain-of-Thought       | Single call, CoT instructions, no articles                            | 1          |
+| B3  | RAG                    | Single call, question + hypotheses + top-10 articles                  | 1          |
+| B4  | Self-Consistency       | k=4 CoT samples at T=0.7 + articles, **majority vote** over picks     | 4          |
+| B5  | Multi-Agent Debate     | n=2 agents, 1 round, articles, judge picks winner                     | 3          |
+| B6  | Tree-of-Thoughts       | breadth=2, depth=2, articles, best-path argmax                        | ~6         |
+| B7  | Reflexion              | n=2 iterations, articles, self-critique then revise                   | 4          |
+| B8  | *(deprecated)*         | Verbalized Confidence no longer applicable — **dropped from the paper** under pick-only framing. Replaced with a trivial **majority-class** reference baseline reported in every results table. | — |
+| B9  | LLM Ensemble           | 3 configs at T ∈ {0.0, 0.5, 1.0}, articles, **majority vote**        | 3          |
 
-### B3: RAG-Only
-- Retrieve n=10 articles, concatenate abstracts into context
-- 1 LLM call per query, no ACH structure
-- **Batch size:** 100 requests
-- **Estimated tokens:** 100 × 4,000 = 400k tokens
-- **Estimated cost (batch):** $1.00
+**Aggregation (B4, B9)**: simple plurality over `k` picks. Ties broken deterministically (alphabetical on hypothesis label).
+
+**Estimated cost (Batch API, 2k FDs × 9 baselines)**: ~$45.
 
 ---
 
 ## Phase 3: EMR-ACH Staged Build-Up
 
-**Duration:** 2-3 days  
-**API mode:** BATCH (staged — one batch per pipeline stage)  
-**N queries:** 100  
-**Model:** gpt-4o  
+**Duration**: 2–3 days.
+**API mode**: Batch (one batch per pipeline stage, cached in `results/raw/`).
+**Model**: `gpt-4o-mini`.
 
-### Staged batch protocol
-Each stage submits one batch job and writes results to `results/raw/`.
-Results are cached — if `results/raw/{stage}.jsonl` exists, the stage is skipped.
+**Pick-only aggregation.** EMR-ACH's scoring step is:
 
-| Stage | Batch job name | N requests | Tokens/req | Total tokens | Cost (batch) |
-|-------|---------------|------------|------------|--------------|--------------|
-| Step 1: indicators | `indicators_full` | 100 | ~1,400 | 140k | $0.35 |
-| Step 2: influence | `influence_full` | 100 | ~2,800 | 280k | $0.70 |
-| Step 4: presence | `presence_full` | 1,000 (100×10) | ~1,900 | 1,900k | $4.75 |
-| Step 4b: background | `background_full` | 100 | ~1,900 | 190k | $0.48 |
-| Step 7: deep analysis | `deep_analysis_full` | 1,000 (100×10) | ~1,000 | 1,000k | $2.50 |
-| **Total** | | **2,300** | | **3,510k** | **$8.78** |
+```
+score[h] = sum_j A[:, j] · I[j, h] · d_j        (analysis · influence · diagnosticity)
+pick    = argmax_h score[h]
+```
 
-*Batch API pricing: $2.50/1M input + $10/1M output tokens for gpt-4o. Estimate: 70% input, 30% output.*
+No calibration, no Platt, no softmax. The argmax is the final system output.
 
-### Incremental build-up (Table 1 in paper)
-Each row of Table 1 is computed from cached intermediate results by varying which components are active:
+Staged batches (cache-keyed by `{cutoff}/{stage}/{config_hash}`):
 
-| Row | Components active | Requires new batches? |
-|-----|------------------|----------------------|
-| EMR-ACH (base) | indicators (generic) + influence + presence + aggregate | Steps 1-5 only |
-| + Calibrated mapping | same + Platt scaling | No new batches (CPU only) |
-| + Contrastive indicators | contrastive indicator prompt + steps 2-5 | New Step 1+2 batch |
-| + Diagnostic weighting | same + d_j weights | No new batches (CPU only) |
-| + Absence-of-evidence | same + background prior | New Step 4b batch |
-| + Multi-agent ACH | same + debate | New debate batch |
-| + Deep Analysis (Full) | all above + Step 7 | New Step 7 batch |
+| Stage             | Batch job            | N requests   | Purpose                                   |
+|-------------------|----------------------|--------------|-------------------------------------------|
+| 1. indicators     | `indicators_full`    | N_FDs        | Generate 24 contrastive indicators / FD   |
+| 2. influence      | `influence_full`     | N_FDs        | Score each indicator's influence / hypo   |
+| 4. presence       | `presence_full`      | N_FDs × 10   | Score presence in each retrieved article  |
+| 7. deep_analysis  | `deep_analysis_full` | N_FDs × 10   | Disambiguate under-specified evidence     |
+
+**No `background_prior` batch** (that step existed for absence-of-evidence in the probabilistic formulation; irrelevant under pick-only).
+
+Table 1 in the paper is built by toggling components — all rows reuse the same cached stage outputs:
+
+| Row                              | Active components                                   | New batches? |
+|----------------------------------|-----------------------------------------------------|:------------:|
+| EMR-ACH (base)                   | generic indicators + influence + presence + argmax  | Steps 1–4    |
+| + Contrastive indicators         | contrastive prompt + steps 2–4                      | New S1+S2    |
+| + Diagnostic weighting (d_j)     | same + d_j in score                                 | None (CPU)   |
+| + Multi-agent ACH                | same + debate + judge                               | New debate   |
+| + Deep Analysis (Full)           | all above + Step 7                                  | New S7       |
+
+**Estimated cost (2k FDs full pipeline)**: ~$18.
 
 ---
 
 ## Phase 4: Ablation Study
 
-**Duration:** 2 days  
-**API mode:** BATCH  
-**N queries:** 100  
-**Model:** gpt-4o  
+**Duration**: 2 days. Reuses cached matrices wherever possible.
 
-### Cache reuse strategy
-Most ablations reuse intermediate results. Only 3 ablations require new batches:
+| Ablation                    | New batch? | Rationale                                         |
+|-----------------------------|:----------:|---------------------------------------------------|
+| w/o Multi-agent             | No         | Skip debate, reuse A, I                           |
+| w/o Deep Analysis           | No         | Skip Step 7, reuse A, I                           |
+| w/o Diag. weighting         | No         | Set d_j = 1, reuse A, I                           |
+| w/o Contrastive indicators  | **Yes**    | New S1+S2 with generic indicator prompt           |
+| w/o MMR / RRF               | **Yes**    | BM25-only retrieval → new A matrix                |
+| w/o Temporal decay          | **Yes**    | Retrieval without time weighting → new A matrix   |
 
-| Ablation | New batch needed | Why |
-|----------|-----------------|-----|
-| w/o Multi-agent | No | Skip debate step, reuse A,I matrices |
-| w/o Deep Analysis | No | Skip Step 7, reuse A,I matrices |
-| w/o Diag. Weighting | No | Set d_j=1, reuse A,I matrices |
-| w/o Absence-of-evidence | No | Skip background row, reuse A,I matrices |
-| w/o Calibrated mapping | No | Use heuristic map, reuse A,I matrices |
-| w/o Contrastive indicators | **Yes** | New indicator prompt → new Step 1+2 |
-| w/o MMR/RRF | **Yes** | BM25-only retrieval → new A matrix |
-| w/o Temporal decay | **Yes** | No time decay in retrieval → new A matrix |
-
-**Additional batches needed:**
-- `indicators_generic` (non-contrastive): 100 × 1,400 = 140k tokens → $0.35
-- `presence_bm25only` (BM25 retrieval): 1,000 × 1,900 = 1,900k → $4.75
-- `presence_nodecay` (no temporal decay): 1,000 × 1,900 = 1,900k → $4.75
-
-**Phase 4 additional cost:** ~$9.85
+**Additional Phase 4 cost**: ~$10.
 
 ---
 
 ## Phase 5: Multi-Agent Scaling
 
-**Duration:** 2 days  
-**API mode:** BATCH  
-**N queries:** 100  
-**Model:** gpt-4o  
+**Duration**: 2 days.
+**N_agents ∈ {1, 2, 3, 4, 5, 6}**. Each agent argues for one hypothesis; a judge picks the final hypothesis.
 
-### Protocol
-Run with N_agents ∈ {1, 2, 3, 4, 5, 6}. N_agents=1 reuses the single-agent ablation result.
+Per-FD cost grows linearly in `N_agents` (1 advocate call each + 1 judge call). All agents and the judge return a single hypothesis label — the judge's pick is the final answer.
 
-Per agent per query:
-- 1 advocate call: ~800 tokens
-- (Optional) 1 challenge call against top competitor: ~1,200 tokens
-- Judge call: ~2,000 tokens
-
-| N_agents | Calls/query | Total calls | Tokens | Cost (batch) |
-|----------|------------|-------------|--------|--------------|
-| 2 | 3 | 300 | 900k | $2.25 |
-| 3 | 4 | 400 | 1,200k | $3.00 |
-| 4 | 6 | 600 | 1,800k | $4.50 |
-| 5 | 8 | 800 | 2,400k | $6.00 |
-| 6 | 10 | 1,000 | 3,000k | $7.50 |
-
-**Phase 5 total:** ~$23.25
+Estimated Phase 5 cost: ~$15 across the scan.
 
 ---
 
-## Phase 6: ForecastBench Cross-Domain
+## Phase 6: Cross-Benchmark Generalization
 
-**Duration:** 1 day  
-**API mode:** BATCH  
-**N queries:** 300  
-**Model:** gpt-4o  
+**Duration**: 1 day.
+**API mode**: Batch.
 
-### Adaptation
-ForecastBench questions are binary (Yes/No) with crowd probability. We adapt:
-- Hypotheses H = {Yes, No} instead of {VC, MC, VK, MK}
-- Indicators are general forecasting signals, not geopolitical-specific
-- Evaluation: Brier score, ECE (crowd probability as calibration target)
-
-**Estimated tokens:** 300 × 5,000 = 1,500k tokens → **$3.75**
+The unified benchmark already mixes ForecastBench, GDELT-CAMEO, and Earnings. Phase 6 reports **per-source accuracy and macro-F1** for every system in Phase 2 and Phase 3, plus a **confusion matrix per source** to expose systematic mispicks (e.g. always predicting "No" on ForecastBench, always "Material Cooperation" on GDELT).
 
 ---
 
 ## Phase 7: Analysis and Figure Generation
 
-**Duration:** 1 day  
-**No LLM calls.**
+**Duration**: 1 day. No LLM calls.
 
-### Scripts
-1. `analysis/compute_metrics.py` — reads all results, computes F1/ECE/KL/accuracy + bootstrap CIs
-2. `analysis/compare_systems.py` — generates LaTeX tables (Table 1, Table 2, Table 3)
-3. `analysis/generate_paper_figures.py` — generates updated figures with real data
+Scripts:
+1. `analysis/compute_metrics.py` — accuracy, macro-F1, per-class recall, confusion matrix, bootstrap 95% CIs, per-source breakdown.
+2. `analysis/compare_systems.py` — LaTeX tables (Table 1: incremental build-up; Table 2: baselines vs EMR-ACH; Table 3: per-source; Table 4: ablation).
+3. `analysis/generate_paper_figures.py` — bar charts of accuracy and macro-F1 with CIs; confusion matrices.
+
+**No reliability diagrams. No calibration plots.** Those belong to the probabilistic formulation that the paper no longer makes.
 
 ---
 
-## Total Cost Estimate
+## Metrics (pick-only)
 
-| Phase | Queries | Model | Batch tokens | Cost |
-|-------|---------|-------|-------------|------|
-| 0: Smoke tests | 5 | gpt-4o-mini | ~180k | $0.05 |
-| 1: Smoke tests (prompt debug) | 5×6 | gpt-4o-mini | ~200k | $0.10 |
-| 2: Baselines B1-B3 | 100×3 | gpt-4o | 770k | $1.93 |
-| 3: EMR-ACH staged build-up | 100 | gpt-4o | 3,510k | $8.78 |
-| 4: Ablation study (new batches only) | 100×3 | gpt-4o | 3,940k | $9.85 |
-| 5: Multi-agent scaling (2-6 agents) | 100×5 | gpt-4o | 9,300k | $23.25 |
-| 6: ForecastBench | 300 | gpt-4o | 1,500k | $3.75 |
-| **Total** | | | **~19.4M** | **~$47.71** |
+For every system × benchmark-source cell:
 
-*All LLM costs use OpenAI Batch API at 50% discount over standard pricing.*
-*gpt-4o pricing: $2.50/1M input, $10/1M output (batch). Estimate: 70/30 split.*
+- **Accuracy** = `1/N · Σ 1[pick_i == ground_truth_i]`
+- **Macro-F1** = mean of per-class F1 over `|H|` classes (robust to imbalance)
+- **Per-class recall** = `1/N_c · Σ 1[pick_i == c | gt_i == c]`
+- **Confusion matrix** = `C[gt, pick]` normalized per row
+- **Bootstrap CI** = 1000 resamples at FD level, 95% percentile
+
+**Reference baselines always reported alongside the LLM systems:**
+- *Majority-class*: always predict the most frequent class in the benchmark
+- *Uniform-random*: sample uniformly from `hypothesis_set` (seeded, same across systems)
+
+A system that does not beat *majority-class accuracy* has **no selection skill** on that benchmark and must be reported as such.
+
+---
+
+## Total Cost Estimate (updated, gpt-4o-mini, ~2k FDs)
+
+| Phase | Purpose                                | Cost (Batch API) |
+|-------|----------------------------------------|-----------------:|
+| 1     | Smoke tests (sync, mini)               |           < $0.10 |
+| 2     | Baselines B1–B9 (pick-only)            |              ~$45 |
+| 3     | EMR-ACH staged build-up                |              ~$18 |
+| 4     | Ablation study (new batches only)      |              ~$10 |
+| 5     | Multi-agent scaling                    |              ~$15 |
+| 6     | Per-source cross-benchmark analysis    |           (reuses Ph.2–3 results) |
+| 7     | Figures + tables                       |                 $0 |
+| **Total** |                                    |          **~$88** |
 
 ---
 
@@ -318,36 +257,38 @@ ForecastBench questions are binary (Yes/No) with crowd probability. We adapt:
 6. Save parsed results to results/processed/{job_name}.jsonl
 ```
 
-**Resumability:** `batch_jobs.json` maps job_name → batch_id. On re-run, if batch_id exists and is completed, skip to step 5.
+**Resumability**: `batch_jobs.json` maps `job_name → batch_id`. On re-run, a completed batch is skipped and its cached output is reused.
 
 ---
 
-## Prompt Debugging Workflow (Smoke Tests)
+## Prompt Contract (every stage that produces a pick)
+
+Every pick-producing prompt ends with:
 
 ```
-1. Run smoke_<stage>.py
-2. Inspect printed output — does JSON parse? Are values in range? Content sensible?
-3. If not: edit prompts/<stage>.yaml
-4. Re-run smoke test
-5. Repeat until 5/5 queries pass validation
-6. Run smoke_pipeline_e2e.py for full pipeline check
+Return JSON only, no prose, no code fences:
+{
+  "prediction": "<exactly one of: hypothesis_set>",
+  "reasoning":  "<one or two concise sentences citing article numbers>"
+}
 ```
 
-**Typical issues to fix in prompts:**
-- Model outputs markdown code fences (```json ... ```) around JSON → add "Do not wrap in code blocks"
-- Scores outside [0,1] → add explicit range constraint
-- Missing fields in JSON → add required fields example in prompt
-- Hypotheses abbreviated inconsistently → enumerate exact strings: "VC", "MC", "VK", "MK"
+Parser validates `prediction ∈ hypothesis_set`. On parse failure or off-label prediction, the FD is marked `parse_failed` and counted against the system's accuracy as **wrong** (no silent fallbacks to uniform or majority).
+
+Typical prompt-debugging issues (addressed during Phase 1):
+- Markdown code fences around JSON → prompt explicitly forbids code fences.
+- Model outputs an unlisted hypothesis (e.g. "Maybe") → prompt enumerates the exact set and the validator rejects anything else.
+- Model outputs multiple hypotheses (e.g. `"prediction": "Yes or No"`) → prompt enforces exactly one.
 
 ---
 
 ## Running Order
 
 ```bash
-# Phase 0: verify data
-python -m src.data.mirai
+# Phase 0: build benchmark
+python scripts/build_benchmark.py --cutoff 2026-01-01
 
-# Phase 1: smoke tests (iterate until all pass)
+# Phase 1: smoke tests (iterate until 10/10 pass per stage)
 python experiments/00_smoke/smoke_indicators.py
 python experiments/00_smoke/smoke_influence.py
 python experiments/00_smoke/smoke_presence.py
@@ -355,27 +296,22 @@ python experiments/00_smoke/smoke_deep_analysis.py
 python experiments/00_smoke/smoke_multiagent.py
 python experiments/00_smoke/smoke_pipeline_e2e.py
 
-# Phase 2: baselines
-python experiments/01_baselines/run_baselines.py --mode smoke  # 5 queries, verify
-python experiments/01_baselines/run_baselines.py               # full run, batch API
+# Phase 2: baselines (pick-only)
+cd benchmark
+python -m evaluation.baselines.runner --method all --sync --smoke 10   # smoke
+python -m evaluation.baselines.runner --method all                     # full, batch
 
 # Phase 3: EMR-ACH build-up
 python experiments/02_emrach/run_emrach.py --mode smoke
 python experiments/02_emrach/run_emrach.py
 
 # Phase 4: ablation
-python experiments/03_ablation/run_ablation.py --mode smoke
 python experiments/03_ablation/run_ablation.py
 
-# Phase 5: multi-agent
-python experiments/04_multiagent/run_multiagent.py --mode smoke
+# Phase 5: multi-agent scaling
 python experiments/04_multiagent/run_multiagent.py
 
-# Phase 6: ForecastBench
-python experiments/05_forecastbench/run_forecastbench.py --mode smoke
-python experiments/05_forecastbench/run_forecastbench.py
-
-# Phase 7: analysis
+# Phase 6/7: analysis
 python analysis/compute_metrics.py
 python analysis/compare_systems.py
 python analysis/generate_paper_figures.py

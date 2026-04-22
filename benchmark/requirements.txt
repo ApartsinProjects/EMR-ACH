@@ -1,0 +1,19 @@
+pandas>=2.0
+numpy>=1.24
+requests>=2.31
+pyyaml>=6.0
+trafilatura>=1.6
+sentence-transformers>=3.0
+yfinance>=0.2
+beautifulsoup4>=4.12
+readability-lxml>=0.8
+chardet>=5.0
+tqdm>=4.66
+orjson>=3.10
+pypdf>=4.0
+
+# Optional extended fetcher capabilities (scripts/common/fetch_text_multi.py).
+# Without these, the cascade still works on trafilatura + readability + Wayback.
+playwright>=1.40   # headless Chromium for JS-rendered sites & Cloudflare
+# After install: run `playwright install chromium` to download the browser binary (~500 MB).
+warcio>=1.7        # WARC range-parsing for Common Crawl lookups

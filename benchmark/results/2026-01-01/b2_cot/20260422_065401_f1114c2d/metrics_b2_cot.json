@@ -1,0 +1,111 @@
+{
+  "n": 535,
+  "accuracy": 26.17,
+  "per_benchmark": {
+    "forecastbench": {
+      "n": 79,
+      "n_classes": 2,
+      "n_parse_failed": 0,
+      "accuracy": 83.54,
+      "balanced_accuracy": 59.52,
+      "macro_f1": 0.6111,
+      "mcc": 0.2404,
+      "per_class": {
+        "Yes": {
+          "precision": 0.4286,
+          "recall": 0.25,
+          "f1": 0.3158,
+          "support": 12
+        },
+        "No": {
+          "precision": 0.875,
+          "recall": 0.9403,
+          "f1": 0.9065,
+          "support": 67
+        }
+      },
+      "confusion_matrix": {
+        "Yes": {
+          "Yes": 3,
+          "No": 9
+        },
+        "No": {
+          "Yes": 4,
+          "No": 63
+        }
+      },
+      "majority_class": "No",
+      "majority_class_accuracy": 84.81,
+      "beats_majority": false
+    },
+    "gdelt-cameo": {
+      "n": 456,
+      "n_classes": 4,
+      "n_parse_failed": 0,
+      "accuracy": 16.23,
+      "balanced_accuracy": 31.17,
+      "macro_f1": 0.14,
+      "mcc": 0.0486,
+      "per_class": {
+        "Verbal Cooperation": {
+          "precision": 0.6061,
+          "recall": 0.0673,
+          "f1": 0.1212,
+          "support": 297
+        },
+        "Material Cooperation": {
+          "precision": 0.1173,
+          "recall": 0.9091,
+          "f1": 0.2078,
+          "support": 44
+        },
+        "Verbal Conflict": {
+          "precision": 0.1667,
+          "recall": 0.2549,
+          "f1": 0.2016,
+          "support": 51
+        },
+        "Material Conflict": {
+          "precision": 0.25,
+          "recall": 0.0156,
+          "f1": 0.0294,
+          "support": 64
+        }
+      },
+      "confusion_matrix": {
+        "Verbal Cooperation": {
+          "Verbal Cooperation": 20,
+          "Material Cooperation": 227,
+          "Verbal Conflict": 50,
+          "Material Conflict": 0
+        },
+        "Material Cooperation": {
+          "Verbal Cooperation": 1,
+          "Material Cooperation": 40,
+          "Verbal Conflict": 2,
+          "Material Conflict": 1
+        },
+        "Verbal Conflict": {
+          "Verbal Cooperation": 4,
+          "Material Cooperation": 32,
+          "Verbal Conflict": 13,
+          "Material Conflict": 2
+        },
+        "Material Conflict": {
+          "Verbal Cooperation": 8,
+          "Material Cooperation": 42,
+          "Verbal Conflict": 13,
+          "Material Conflict": 1
+        }
+      },
+      "majority_class": "Verbal Cooperation",
+      "majority_class_accuracy": 65.13,
+      "beats_majority": false
+    }
+  },
+  "method": "b2_cot",
+  "model": "gpt-4o-mini-2024-07-18",
+  "temperature": 0.0,
+  "cutoff": "2026-01-01",
+  "run_id": "20260422_065401_f1114c2d"
+}

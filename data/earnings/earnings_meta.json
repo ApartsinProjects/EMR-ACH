@@ -1,0 +1,35 @@
+{
+  "total_fds": 557,
+  "unique_tickers_kept": 502,
+  "tickers_attempted": 503,
+  "tickers_with_no_data": [
+    "L"
+  ],
+  "date_range": "2026-01-01 to 2026-04-22",
+  "threshold_pct": 2.0,
+  "ground_truth_distribution": {
+    "Beat": 331,
+    "Meet": 121,
+    "Miss": 105
+  },
+  "ground_truth_base_rates": {
+    "Beat": 0.594,
+    "Meet": 0.217,
+    "Miss": 0.189
+  },
+  "by_sector": {
+    "Financial Services": 97,
+    "Industrials": 84,
+    "Technology": 83,
+    "Healthcare": 64,
+    "Consumer Cyclical": 57,
+    "Consumer Defensive": 38,
+    "Real Estate": 32,
+    "Utilities": 31,
+    "Communication Services": 25,
+    "Energy": 24,
+    "Basic Materials": 21,
+    "": 1
+  },
+  "output": "E:\\Projects\\ACH\\data\\earnings\\earnings_forecasts.jsonl"
+}

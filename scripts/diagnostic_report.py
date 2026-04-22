@@ -50,6 +50,24 @@ def main():
     n = len(fds)
     print(f"Loaded {n} filtered Forecast Dossiers, {len(arts)} articles in pool")
 
+    if n == 0:
+        # Empty FD set (e.g., cutoff drops everything). Write a minimal report
+        # so downstream steps don't crash.
+        OUT_MD.write_text(
+            "# Unified Forecast Dossier - Diagnostic Report\n\n"
+            f"Generated: {datetime.now().isoformat(timespec='minutes')}\n\n"
+            "**NO ACCEPTED FORECAST DOSSIERS.** The quality filter dropped every "
+            "candidate (most likely due to the model_cutoff + buffer_days guard). "
+            "Check `forecasts_dropped.jsonl` and `quality_meta.json` for reasons.\n",
+            encoding="utf-8",
+        )
+        OUT_JSON.write_text(json.dumps({
+            "n_filtered_fds": 0, "n_articles_pool": len(arts),
+            "leakage_violations": 0, "note": "empty FD set after quality filter",
+        }, indent=2), encoding="utf-8")
+        print(f"Wrote empty-state report to {OUT_MD} and {OUT_JSON}")
+        return
+
     # per-source breakdown
     per_src = defaultdict(list)
     for fd in fds:

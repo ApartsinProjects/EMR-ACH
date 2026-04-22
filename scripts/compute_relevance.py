@@ -10,7 +10,7 @@ semantically-relevant articles elsewhere in the pool.
 Reads:
   data/unified/forecasts.jsonl
   data/unified/articles.jsonl
-  configs/relevance.yaml
+  configs/default_config.yaml  (`relevance:` section)
 
 Writes:
   data/unified/forecasts.jsonl             - article_ids overwritten
@@ -32,10 +32,18 @@ from pathlib import Path
 import numpy as np
 import yaml
 from sentence_transformers import SentenceTransformer, util
+# Fast JSONL I/O (orjson if available, stdlib json fallback) — see _fast_jsonl.py
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).parent))
+from _fast_jsonl import loads as _j_loads, dumps as _j_dumps
 
 ROOT = Path(__file__).parent.parent
 UNI = ROOT / "data" / "unified"
-CONFIG = ROOT / "configs" / "relevance.yaml"
+# Relevance config lives under the `relevance:` section of default_config.yaml.
+# Falls back to the legacy standalone configs/relevance.yaml if present (deprecated).
+CONFIG_MAIN   = ROOT / "configs" / "default_config.yaml"
+CONFIG_LEGACY = ROOT / "configs" / "relevance.yaml"
 FC_FILE = UNI / "forecasts.jsonl"
 ART_FILE = UNI / "articles.jsonl"
 META = UNI / "relevance_meta.json"
@@ -55,8 +63,15 @@ def key_ngrams(text: str, n: int = 2) -> set[str]:
 
 
 def load_cfg() -> dict:
-    with open(CONFIG, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    """Read the relevance section from default_config.yaml. If the whole file
+    is just the relevance knobs (legacy standalone configs/relevance.yaml),
+    return it as-is."""
+    path = CONFIG_MAIN if CONFIG_MAIN.exists() else CONFIG_LEGACY
+    with open(path, encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+    if "relevance" in cfg:
+        return cfg["relevance"]
+    return cfg
 
 
 def embed(model, texts: list[str], batch: int, desc: str) -> np.ndarray:
@@ -66,15 +81,99 @@ def embed(model, texts: list[str], batch: int, desc: str) -> np.ndarray:
     return emb.astype(np.float32)
 
 
+import hashlib as _hashlib
+
+
+def _per_row_fingerprints(items: list[dict], text_fn) -> list[str]:
+    """MD5 of each row's text. Used by the incremental cache loader to
+    identify exactly which rows changed between builds, so we can re-embed
+    only the deltas rather than the entire pool."""
+    out = []
+    for r in items:
+        h = _hashlib.md5()
+        h.update(text_fn(r).encode("utf-8", errors="replace"))
+        out.append(h.hexdigest())
+    return out
+
+
 def load_or_embed(model, items: list[dict], text_fn, cache_path: Path,
                   batch: int, desc: str, rebuild: bool) -> np.ndarray:
-    if cache_path.exists() and not rebuild:
-        cached = np.load(cache_path)
-        if cached.shape[0] == len(items):
-            print(f"  [{desc}] cache hit ({cache_path.name})")
-            return cached
-    emb = embed(model, [text_fn(r) for r in items], batch, desc)
+    """Incremental embedding cache.
+
+    State on disk:
+      {cache}.npy     numpy array, shape = (N, D)
+      {cache}.fp.txt  N lines, each line = per-row MD5 fingerprint (order-aligned)
+
+    Strategy:
+      1. Compute current per-row fingerprints.
+      2. Load cached fingerprints if present. Build a `fp -> row_idx` map.
+      3. For each current row, if its fingerprint is in the cached map,
+         copy the old embedding; otherwise mark for (re-)embedding.
+      4. Embed only the deltas; assemble the final array; persist new cache.
+      5. On save, the previous .npy is preserved under a timestamped backup.
+    """
+    fp_path = cache_path.with_suffix(".fp.txt")
+    current_fps = _per_row_fingerprints(items, text_fn)
+    N = len(items)
+
+    cached_emb = None
+    cached_fps: list[str] = []
+    if not rebuild and cache_path.exists() and fp_path.exists():
+        try:
+            cached_emb = np.load(cache_path)
+            cached_fps = fp_path.read_text(encoding="utf-8").splitlines()
+            if cached_emb.shape[0] != len(cached_fps):
+                cached_emb = None  # corrupt cache — ignore
+                cached_fps = []
+        except Exception:
+            cached_emb = None
+            cached_fps = []
+
+    if cached_emb is None:
+        # full cold embed
+        print(f"  [{desc}] no usable cache; embedding all {N} rows")
+        emb = embed(model, [text_fn(r) for r in items], batch, desc)
+    else:
+        # incremental path — reuse rows whose fingerprint is in the old cache
+        fp_to_idx = {fp: i for i, fp in enumerate(cached_fps)}
+        D = cached_emb.shape[1]
+        out = np.zeros((N, D), dtype=cached_emb.dtype)
+        to_embed_idx = []
+        for i, fp in enumerate(current_fps):
+            j = fp_to_idx.get(fp, -1)
+            if j >= 0:
+                out[i] = cached_emb[j]
+            else:
+                to_embed_idx.append(i)
+
+        n_reused = N - len(to_embed_idx)
+        print(f"  [{desc}] incremental cache: reused {n_reused}/{N} ({100*n_reused/N:.1f}%), "
+              f"embedding {len(to_embed_idx)} new/changed rows")
+        if to_embed_idx:
+            texts = [text_fn(items[i]) for i in to_embed_idx]
+            new_emb = embed(model, texts, batch, f"{desc}-delta")
+            for pos, i in enumerate(to_embed_idx):
+                out[i] = new_emb[pos]
+        # Normalize: sentence-transformers with normalize_embeddings=True produces
+        # L2-normalized vectors; rows copied from cache inherit that. New rows from
+        # embed() also have it. No re-normalize needed.
+        emb = out
+
+    # Preserve previous cache so nothing is overwritten in place
+    if cache_path.exists():
+        from datetime import datetime as _dt
+        ts = _dt.now().strftime("%Y%m%d_%H%M%S")
+        backup = cache_path.with_name(f"{cache_path.stem}.prev_{ts}.npy")
+        try:
+            cache_path.rename(backup)
+            if fp_path.exists():
+                fp_path.rename(fp_path.with_name(f"{fp_path.stem}.prev_{ts}.txt"))
+            print(f"  [{desc}] previous cache preserved as {backup.name}")
+        except Exception:
+            pass
+
     np.save(cache_path, emb)
+    fp_path.write_text("\n".join(current_fps), encoding="utf-8")
     return emb
 
 
@@ -92,17 +191,35 @@ def main():
     max_chars = cfg.get("max_text_chars", 500)
     sources = cfg["sources"]
 
-    all_forecasts = [json.loads(l) for l in open(FC_FILE, encoding="utf-8")]
-    all_articles = [json.loads(l) for l in open(ART_FILE, encoding="utf-8")]
+    all_forecasts = [_j_loads(l) for l in open(FC_FILE, encoding="utf-8")]
+    all_articles = [_j_loads(l) for l in open(ART_FILE, encoding="utf-8")]
 
     # Subset by benchmark/provenance so we don't embed MIRAI's 178K articles
     # when we only need to score ForecastBench cross-matches.
     if args.benchmark_filter:
         bench = args.benchmark_filter
-        prov_tag = bench.split("-")[0]  # "forecastbench" or "mirai"
-        articles = [a for a in all_articles if any(prov_tag in p for p in a.get("provenance", []))]
+        # Benchmark name normalization: 'gdelt_cameo' (Python identifier style,
+        # used in YAML keys) and 'gdelt-cameo' (dash style, stored in FD records)
+        # are aliases. Always resolve to the dash form used in data.
+        _alias = {'gdelt_cameo': 'gdelt-cameo'}
+        bench = _alias.get(bench, bench)
+        # Per-benchmark article pool:
+        #   - forecastbench → articles with 'forecastbench' in provenance
+        #   - gdelt-cameo   → articles with 'gdelt' in provenance
+        #   - earnings      → NO provenance filter (cross-search whole pool —
+        #                     earnings has no dedicated news source yet)
+        if bench == "earnings":
+            articles = all_articles
+            print(f"Benchmark filter: {bench} -> searching ENTIRE article pool "
+                  f"({len(articles)} articles) since earnings has no dedicated news source")
+        else:
+            prov_tag = bench.split("-")[0]
+            articles = [a for a in all_articles
+                        if any(prov_tag in p for p in a.get("provenance", []))]
+            print(f"Benchmark filter: {bench} -> {len(articles)} articles "
+                  f"(provenance contains '{prov_tag}')")
         scored_ids = {f["id"] for f in all_forecasts if f.get("benchmark") == bench}
-        print(f"Benchmark filter: {bench} -> {len(articles)} articles, {len(scored_ids)} forecasts in scope")
+        print(f"  scoring {len(scored_ids)} forecasts in scope")
     else:
         articles = all_articles
         scored_ids = {f["id"] for f in all_forecasts}
@@ -221,13 +338,25 @@ def main():
         lens = [len(fc["article_ids"]) for fc in scored_forecasts if fc.get("source") == src]
         s["avg_k"] = round(sum(lens) / len(lens), 2) if lens else 0
 
-    # write back
-    with open(FC_FILE, "w", encoding="utf-8") as f:
+    # write back — atomic: write .tmp then os.replace (crash-safe in-place overwrite)
+    import os as _os
+    tmp_fc = FC_FILE.with_suffix(FC_FILE.suffix + ".tmp") if hasattr(FC_FILE, "with_suffix") else \
+             Path(str(FC_FILE) + ".tmp")
+    with open(tmp_fc, "w", encoding="utf-8") as f:
         for fc in forecasts:
             f.write(json.dumps(fc, ensure_ascii=False) + "\n")
+        f.flush()
+        try: _os.fsync(f.fileno())
+        except Exception: pass
+    _os.replace(str(tmp_fc), str(FC_FILE))
 
-    with open(META, "w", encoding="utf-8") as f:
+    tmp_meta = Path(str(META) + ".tmp")
+    with open(tmp_meta, "w", encoding="utf-8") as f:
         json.dump(stats, f, indent=2)
+        f.flush()
+        try: _os.fsync(f.fileno())
+        except Exception: pass
+    _os.replace(str(tmp_meta), str(META))
 
     print("\n=== Coverage lift ===")
     print(f"Before:  with_arts={stats['before']['with_arts']}  zero={stats['before']['zero']}")

@@ -25,6 +25,11 @@ from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
+# Fast JSONL I/O (orjson if available, stdlib json fallback) — see _fast_jsonl.py
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).parent))
+from _fast_jsonl import loads as _j_loads, dumps as _j_dumps
 
 ROOT = Path(__file__).parent.parent
 UNI = ROOT / "data" / "unified"
@@ -185,15 +190,30 @@ def svg_scatter(points, width=720, height=280, title="", x_label="", y_label="",
 # ─────────────────── main ────────────────────────
 def main():
     random.seed(7)
-    fds = [json.loads(l) for l in open(UNI / "forecasts_filtered.jsonl", encoding="utf-8")]
+    fds = [_j_loads(l) for l in open(UNI / "forecasts_filtered.jsonl", encoding="utf-8")]
     drops = []
     drop_path = UNI / "forecasts_dropped.jsonl"
     if drop_path.exists():
-        drops = [json.loads(l) for l in open(drop_path, encoding="utf-8")]
-    arts = {json.loads(l)["id"]: json.loads(l) for l in open(UNI / "articles.jsonl", encoding="utf-8")}
+        drops = [_j_loads(l) for l in open(drop_path, encoding="utf-8")]
+    arts = {_j_loads(l)["id"]: _j_loads(l) for l in open(UNI / "articles.jsonl", encoding="utf-8")}
 
     quality_meta = json.loads((UNI / "quality_meta.json").read_text(encoding="utf-8"))
     diag = json.loads((UNI / "diagnostic_report.json").read_text(encoding="utf-8"))
+
+    # Handle empty-FD state explicitly (happens when cutoff drops everything).
+    if not fds:
+        OUT.write_text(
+            "<!DOCTYPE html><html><body style='font-family:sans-serif;padding:40px;'>"
+            "<h1>EMR-ACH Benchmark EDA Report</h1>"
+            "<p><strong>No accepted Forecast Dossiers.</strong> The quality filter "
+            "dropped every candidate (most commonly due to the model_cutoff + "
+            "buffer_days guard). Check <code>quality_meta.json</code> and "
+            "<code>forecasts_dropped.jsonl</code> for the dominant drop reasons.</p>"
+            "</body></html>",
+            encoding="utf-8",
+        )
+        print(f"Wrote minimal empty-state EDA to {OUT}")
+        return
 
     # ─── 1. Headline numbers ───
     n_fds = len(fds)
@@ -202,7 +222,7 @@ def main():
     total_links = sum(len(fd["article_ids"]) for fd in fds)
     avg_arts = total_links / n_fds if n_fds else 0
     median_arts = statistics.median(len(fd["article_ids"]) for fd in fds)
-    full_text_pct = 100 * with_text / n_arts
+    full_text_pct = 100 * with_text / n_arts if n_arts else 0
 
     # ─── 2. Per-source breakdown ───
     per_src = defaultdict(list)
@@ -325,20 +345,9 @@ tr:hover td{background:#fdfdff;}
 
     # ── Pipeline summary ──
     parts.append("<h2>1. Pipeline &amp; Coverage Recovery</h2>")
-    parts.append("""
-<p>Starting from 530 raw ForecastBench geopolitics questions, coverage recovery and
-quality-filter steps produced the final benchmark:</p>
-<table>
-<tr><th>Stage</th><th>Forecasts w/ articles</th><th>% of raw 530</th><th>Notes</th></tr>
-<tr><td>Raw GDELT per-question download</td><td>150</td><td>28.3%</td><td>baseline</td></tr>
-<tr><td>+ Step A (SBERT cross-match)</td><td>458</td><td>86.4%</td><td>no API calls, free lift of +308</td></tr>
-<tr><td>+ Step B (LLM keyword rewrite + GDELT retry)</td><td>461</td><td>86.9%</td><td>OpenAI quota limited</td></tr>
-<tr><td>+ Step C (Metaculus page scraping)</td><td>461</td><td>86.9%</td><td>Metaculus 2.0 API blocks description</td></tr>
-<tr><td><strong>After quality filter</strong></td>
-  <td><strong>311</strong></td><td><strong>58.7%</strong></td>
-  <td>&ge;3 arts, spread &ge;2d, chars&ge;1500, 0 leakage (626 leaky articles pruned)</td></tr>
-</table>
-""")
+    parts.append(
+        "<p>See <code>relevance_meta.json</code> for coverage recovery at build time.</p>"
+    )
 
     # ── Per-source ──
     parts.append("<h2>2. Per-Source Breakdown (Accepted FDs)</h2>")
@@ -498,7 +507,7 @@ quality-filter steps produced the final benchmark:</p>
     parts.append("<pre style='background:#f6f6f6;padding:10px;border-radius:4px;font-size:9.5pt;overflow-x:auto;'>"
                  "{\n"
                  "  \"id\":               \"fb_poly_12345\",\n"
-                 "  \"benchmark\":        \"forecastbench\" | \"mirai-2024\",\n"
+                 "  \"benchmark\":        \"forecastbench\" | \"gdelt-cameo\",\n"
                  "  \"source\":           \"polymarket\" | \"metaculus\" | \"manifold\" | \"infer\" | \"gdelt-kg\",\n"
                  "  \"hypothesis_set\":   [\"Yes\", \"No\"] | [\"VC\", \"MC\", \"VK\", \"MK\"],\n"
                  "  \"question\":         \"Will X happen by Y?\",\n"
@@ -526,7 +535,7 @@ quality-filter steps produced the final benchmark:</p>
                  "  \"actors\":       [\"USA\", \"CHN\"],\n"
                  "  \"cameo_code\":   \"\",\n"
                  "  \"char_count\":   5832,\n"
-                 "  \"provenance\":   [\"forecastbench\" | \"forecastbench-stepB\" | \"mirai-2024\"]\n"
+                 "  \"provenance\":   [\"forecastbench\" | \"forecastbench-stepB\" | \"gdelt-cameo\"]\n"
                  "}</pre>")
 
     parts.append('<p style="margin-top:26px;color:var(--sub);font-size:9pt;">'

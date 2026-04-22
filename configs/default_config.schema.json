@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/emr-ach/emr-ach/blob/main/configs/default_config.schema.json",
+  "title": "EMR-ACH benchmark build config",
+  "description": "Schema for configs/default_config.yaml, consumed by scripts/build_benchmark.py.",
+  "type": "object",
+  "required": ["model_cutoff"],
+  "properties": {
+    "model_cutoff":       {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+    "cutoff_buffer_days": {"type": "integer", "minimum": 0, "maximum": 3650},
+
+    "output": {
+      "type": "object",
+      "properties": {
+        "root": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+
+    "benchmarks": {
+      "type": "object",
+      "properties": {
+        "forecastbench": {
+          "type": "object",
+          "properties": {
+            "enabled":                   {"type": "boolean"},
+            "prediction_market_sources": {"type": "array", "items": {"type": "string"}}
+          },
+          "additionalProperties": false
+        },
+
+        "gdelt_cameo": {
+          "type": "object",
+          "properties": {
+            "enabled":              {"type": "boolean"},
+            "context_start":        {"type": "string", "pattern": "^\\d{6}$"},
+            "context_end":          {"type": "string", "pattern": "^\\d{6}$"},
+            "test_month":           {"type": "string", "pattern": "^\\d{6}$"},
+            "all_end":              {"type": "string", "pattern": "^\\d{6}$"},
+            "min_daily_mentions":   {"type": "integer", "minimum": 1},
+            "max_download_workers": {"type": "integer", "minimum": 1, "maximum": 64}
+          },
+          "additionalProperties": false
+        },
+
+        "earnings": {
+          "type": "object",
+          "properties": {
+            "enabled":   {"type": "boolean"},
+            "start":     {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+            "end":       {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+            "tickers":   {"oneOf": [{"type": "null"}, {"type": "array", "items": {"type": "string"}}]},
+            "threshold": {"type": "number", "minimum": 0, "maximum": 1}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "quality": {
+      "type": "object",
+      "properties": {
+        "min_articles":                      {"type": "integer", "minimum": 0},
+        "min_distinct_days":                 {"type": "integer", "minimum": 0},
+        "min_chars":                         {"type": "integer", "minimum": 0},
+        "min_question_chars":                {"type": "integer", "minimum": 0},
+        "min_distinct_days_per_benchmark":   {"type": "object", "additionalProperties": {"type": "integer"}}
+      },
+      "additionalProperties": false
+    },
+
+    "relevance": {
+      "type": "object",
+      "properties": {
+        "embedding_model": {"type": "string"},
+        "batch_size":      {"type": "integer", "minimum": 1, "maximum": 1024},
+        "max_text_chars":  {"type": "integer", "minimum": 1},
+        "sources": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "embedding_threshold":   {"type": "number", "minimum": -1, "maximum": 1},
+              "keyword_overlap_min":   {"type": "integer", "minimum": 0},
+              "lookback_days":         {"type": "integer", "minimum": 1},
+              "top_k":                 {"type": "integer", "minimum": 1, "maximum": 1000},
+              "recency_weight":        {"type": "number", "minimum": 0, "maximum": 1},
+              "actor_match_required":  {"type": "boolean"}
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "pipeline": {
+      "type": "object",
+      "properties": {
+        "snapshot_hardlink_bytes":   {"type": "integer", "minimum": 0},
+        "text_fetch_workers":        {"type": "integer", "minimum": 1, "maximum": 128},
+        "gdelt_text_fetch_workers":  {"type": "integer", "minimum": 1, "maximum": 128},
+        "http_timeout_sec":          {"type": "integer", "minimum": 1, "maximum": 600}
+      },
+      "additionalProperties": false
+    },
+
+    "secrets": {
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    }
+  },
+  "additionalProperties": false
+}

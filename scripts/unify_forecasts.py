@@ -1,9 +1,9 @@
 """
-Unify forecast records from ForecastBench and MIRAI-2024 into a single schema.
+Unify forecast records from ForecastBench and GDELT-CAMEO into a single schema.
 
 Reads (read-only):
   data/forecastbench_geopolitics.jsonl          - ForecastBench binary questions
-  data/mirai_2024/relation_query.csv            - MIRAI-2024 4-class queries (if exists)
+  data/gdelt_cameo/relation_query.csv            - GDELT-CAMEO 4-class queries (if exists)
   data/unified/articles.jsonl                   - needed to build url->article_id map
 
 Writes:
@@ -16,7 +16,7 @@ Forecast schema:
     lookback_days, article_ids }
 
 `article_ids` is populated from the existing question_id <-> article linkage in
-gdelt_articles.jsonl for ForecastBench and from oracle Docid for MIRAI-2024.
+gdelt_articles.jsonl for ForecastBench and from oracle Docid for GDELT-CAMEO.
 compute_relevance.py can later refine or replace these.
 
 Usage:
@@ -25,9 +25,19 @@ Usage:
 import csv
 import hashlib
 import json
+import sys
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
+# Fast JSONL I/O (orjson if available, stdlib json fallback) — see _fast_jsonl.py
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).parent))
+from _fast_jsonl import loads as _j_loads, dumps as _j_dumps
+
+# MIRAI relation_query.csv has Docids fields that can exceed Python's default
+# 128k CSV field limit. Bump to the max.
+csv.field_size_limit(min(sys.maxsize, 2**31 - 1))
 
 ROOT = Path(__file__).parent.parent
 DATA = ROOT / "data"
@@ -37,16 +47,42 @@ UNIFIED.mkdir(parents=True, exist_ok=True)
 FB_IN        = DATA / "forecastbench_geopolitics.jsonl"
 FB_ARTS      = DATA / "gdelt_articles.jsonl"
 FB_ARTS_SUPP = DATA / "gdelt_articles_supplement.jsonl"
-MIRAI_Q      = DATA / "mirai_2024" / "test" / "relation_query.csv"
-MIRAI_KG     = DATA / "mirai_2024" / "data_kg.csv"
+GDELT_CAMEO_Q      = DATA / "gdelt_cameo" / "test" / "relation_query.csv"
+GDELT_CAMEO_KG     = DATA / "gdelt_cameo" / "data_kg.csv"
 UNI_ARTS     = UNIFIED / "articles.jsonl"
 OUT_FC       = UNIFIED / "forecasts.jsonl"
 OUT_META     = UNIFIED / "forecasts_meta.json"
 
 FB_HYP       = ["Yes", "No"]
-MIRAI_HYP    = ["VC", "MC", "VK", "MK"]
-FB_LOOKBACK  = 30
-MIRAI_LOOKBACK = 90  # Aug-Oct context for Nov test month
+# MIRAI hypotheses use VERBAL labels, not CAMEO codes, so any downstream prompt
+# builder can construct a prompt from the FD record alone (no external lookup).
+GDELT_CAMEO_HYP    = ["Verbal Cooperation", "Material Cooperation",
+                "Verbal Conflict",     "Material Conflict"]
+GDELT_CAMEO_HYP_CODES = ["VC", "MC", "VK", "MK"]  # parallel; only used for legacy mapping
+FB_LOOKBACK  = 90   # unified 'forecast from prior news' analysis window
+GDELT_CAMEO_LOOKBACK = 90   # matches FB + earnings for uniform task framing
+
+FB_HYP_DEFS = {
+    "Yes": "The event or outcome described in the question occurs by the resolution date.",
+    "No":  "The event or outcome described in the question does not occur by the resolution date.",
+}
+
+GDELT_CAMEO_HYP_DEFS = {
+    "Verbal Cooperation":  ("Diplomatic statements, endorsements, public support, "
+                            "commitments, expressions of intent between the two countries."),
+    "Material Cooperation":("Tangible cooperative actions between the two countries: aid, "
+                            "signed agreements, material support, joint operations, economic cooperation."),
+    "Verbal Conflict":     ("Public criticism, condemnation, rejection, demands, threats, "
+                            "or protests between the two countries."),
+    "Material Conflict":   ("Physical confrontation or coercive actions: arrests, seizures, "
+                            "sanctions enforced, troop deployments, attacks, or other tangible hostile acts."),
+}
+
+EARN_HYP_DEFS = {
+    "Beat":  "Reported EPS exceeds analyst consensus by at least the beat threshold.",
+    "Meet":  "Reported EPS is within the beat/miss threshold of analyst consensus.",
+    "Miss":  "Reported EPS falls below analyst consensus by at least the miss threshold.",
+}
 
 
 def art_id(url: str) -> str:
@@ -59,7 +95,7 @@ def load_url_to_art_id() -> dict[str, str]:
         return m
     with open(UNI_ARTS, encoding="utf-8") as f:
         for line in f:
-            r = json.loads(line)
+            r = _j_loads(line)
             m[r["url"]] = r["id"]
     return m
 
@@ -72,7 +108,7 @@ def build_fb_question_to_urls() -> dict[str, list[str]]:
             continue
         with open(path, encoding="utf-8") as f:
             for line in f:
-                r = json.loads(line)
+                r = _j_loads(line)
                 qid = r.get("question_id", "")
                 url = r.get("url", "")
                 if qid and url:
@@ -87,16 +123,11 @@ def load_forecastbench(url2aid: dict[str, str]) -> list[dict]:
     q2urls = build_fb_question_to_urls()
     out = []
     for line in open(FB_IN, encoding="utf-8"):
-        q = json.loads(line)
+        q = _j_loads(line)
         qid = q.get("id", "")
         gt = int(q.get("ground_truth", 0))
         gt_label = FB_HYP[0] if gt == 1 else FB_HYP[1]
         res_date = q.get("resolution_date", "")
-        # forecast_point = resolution_date minus some small offset; ForecastBench
-        # uses freeze_datetime which is typically the question's freeze date.
-        # Use resolution_date as a conservative stand-in — articles with a
-        # stricter pub_date < forecast_point filter will be enforced by the
-        # relevance/quality steps and the per-query protocol runs.
         forecast_point = res_date
         urls = q2urls.get(qid, [])
         article_ids = sorted({url2aid[u] for u in urls if u in url2aid})
@@ -105,15 +136,20 @@ def load_forecastbench(url2aid: dict[str, str]) -> list[dict]:
             "benchmark": "forecastbench",
             "source": q.get("source", ""),
             "hypothesis_set": FB_HYP,
+            "hypothesis_definitions": FB_HYP_DEFS,
             "question": q.get("question", ""),
             "background": q.get("background", ""),
             "forecast_point": forecast_point,
             "resolution_date": res_date,
             "ground_truth": gt_label,
-            "ground_truth_idx": 0 if gt == 1 else 1,  # Yes=idx0, No=idx1
+            "ground_truth_idx": 0 if gt == 1 else 1,
             "crowd_probability": q.get("crowd_probability"),
             "lookback_days": FB_LOOKBACK,
             "article_ids": article_ids,
+            "metadata": {
+                "category":       q.get("category", ""),
+                "original_id":    qid,
+            },
         })
     return out
 
@@ -135,16 +171,16 @@ def cameo_to_quad(code: str) -> int | None:
     return None
 
 
-def load_mirai_2024(url2aid: dict[str, str]) -> list[dict]:
-    if not MIRAI_Q.exists():
-        print(f"[WARN] {MIRAI_Q} not found; skipping MIRAI-2024 (build pending)")
+def load_gdelt_cameo(url2aid: dict[str, str]) -> list[dict]:
+    if not GDELT_CAMEO_Q.exists():
+        print(f"[WARN] {GDELT_CAMEO_Q} not found; skipping GDELT-CAMEO (build pending)")
         return []
     # Build Docid -> URL lookup from data_news.csv so we can map oracle doc
     # references into unified article IDs.
     docid_to_url: dict[str, str] = {}
-    news_csv = DATA / "mirai_2024" / "data_news_full.csv"
+    news_csv = DATA / "gdelt_cameo" / "data_news_full.csv"
     if not news_csv.exists():
-        news_csv = DATA / "mirai_2024" / "data_news.csv"
+        news_csv = DATA / "gdelt_cameo" / "data_news.csv"
     if news_csv.exists():
         with open(news_csv, encoding="utf-8") as f:
             for row in csv.DictReader(f, delimiter="\t"):
@@ -153,17 +189,19 @@ def load_mirai_2024(url2aid: dict[str, str]) -> list[dict]:
                 if did and url:
                     docid_to_url[did] = url
     out = []
-    with open(MIRAI_Q, encoding="utf-8") as f:
+    with open(GDELT_CAMEO_Q, encoding="utf-8") as f:
         for row in csv.DictReader(f, delimiter="\t"):
             qid = row.get("QueryId", "") or row.get("QueryID", "")
             s = row.get("Actor1CountryCode", "")
             o = row.get("Actor2CountryCode", "")
+            s_name = row.get("Actor1CountryName", "") or s
+            o_name = row.get("Actor2CountryName", "") or o
             date = (row.get("DateStr", "") or "")[:10]
-            # QuadLabel is precomputed VC/MC/VK/MK — use it directly.
-            quad = row.get("QuadLabel", "")
-            if quad not in MIRAI_HYP:
+            quad_code = row.get("QuadLabel", "")
+            if quad_code not in GDELT_CAMEO_HYP_CODES:
                 continue
-            gt_idx = MIRAI_HYP.index(quad)
+            gt_idx = GDELT_CAMEO_HYP_CODES.index(quad_code)
+            gt_label = GDELT_CAMEO_HYP[gt_idx]  # verbal label
             docids_raw = row.get("Docids", "")
             try:
                 docids = [str(d) for d in json.loads(docids_raw.replace("'", '"'))] if docids_raw.startswith("[") else []
@@ -171,21 +209,61 @@ def load_mirai_2024(url2aid: dict[str, str]) -> list[dict]:
                 docids = []
             urls = [docid_to_url[d] for d in docids if d in docid_to_url]
             article_ids = sorted({url2aid[u] for u in urls if u in url2aid})
+
+            # Natural-language question. No dataset-specific codes; a prompt
+            # builder can form a full prompt from this FD alone.
+            question = (f"Based on news from the preceding months, what is the dominant "
+                        f"bilateral interaction class between {s_name} and {o_name} "
+                        f"on or around {date}?")
+
             out.append({
-                "id": f"mirai24_{qid}",
-                "benchmark": "mirai-2024",
+                "id": f"gdc_{qid}",
+                "benchmark": "gdelt-cameo",
                 "source": "gdelt-kg",
-                "hypothesis_set": MIRAI_HYP,
-                "question": f"({date}, {s}, ?, {o})",
-                "background": "",
+                "hypothesis_set": GDELT_CAMEO_HYP,
+                "hypothesis_definitions": GDELT_CAMEO_HYP_DEFS,
+                "question": question,
+                "background": (f"This is a bilateral interaction forecasting question. "
+                               f"The subject country is {s_name} ({s}); the object country "
+                               f"is {o_name} ({o}). The forecasting date is {date}."),
                 "forecast_point": date,
                 "resolution_date": date,
-                "ground_truth": quad,
+                "ground_truth": gt_label,
                 "ground_truth_idx": gt_idx,
                 "crowd_probability": None,
-                "lookback_days": MIRAI_LOOKBACK,
+                "lookback_days": GDELT_CAMEO_LOOKBACK,
                 "article_ids": article_ids,
+                "metadata": {
+                    # structured codes kept here (for retrieval-side matching
+                    # such as actor-pair lookups), NOT for prompt construction.
+                    "actors":              [s, o],
+                    "actor_names":         [s_name, o_name],
+                    "ground_truth_code":   quad_code,
+                    "hypothesis_codes":    GDELT_CAMEO_HYP_CODES,
+                    "original_query_id":   qid,
+                },
             })
+    return out
+
+
+EARN_IN = DATA / "earnings" / "earnings_forecasts.jsonl"
+
+
+def load_earnings(url2aid: dict[str, str]) -> list[dict]:
+    """Load earnings-surprise FDs from build_earnings_benchmark.py output.
+    Strips the private `_earnings_meta` field before emitting; the salient
+    numbers (consensus EPS, sector) are already folded into `background`.
+    """
+    if not EARN_IN.exists():
+        return []
+    out = []
+    for line in open(EARN_IN, encoding="utf-8"):
+        r = _j_loads(line)
+        # normalize benchmark identifier to bare "earnings" (year-agnostic)
+        r["benchmark"] = "earnings"
+        r["hypothesis_definitions"] = EARN_HYP_DEFS
+        r.pop("_earnings_meta", None)
+        out.append(r)
     return out
 
 
@@ -198,11 +276,15 @@ def main():
     fb = load_forecastbench(url2aid)
     print(f"  {len(fb)} records")
 
-    print("Loading MIRAI-2024 forecasts...")
-    m24 = load_mirai_2024(url2aid)
-    print(f"  {len(m24)} records")
+    print("Loading GDELT-CAMEO forecasts...")
+    gdc = load_gdelt_cameo(url2aid)
+    print(f"  {len(gdc)} records")
 
-    all_fc = fb + m24
+    print("Loading Earnings forecasts...")
+    earn = load_earnings(url2aid)
+    print(f"  {len(earn)} records")
+
+    all_fc = fb + gdc + earn
     with open(OUT_FC, "w", encoding="utf-8") as f:
         for r in all_fc:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
@@ -214,7 +296,7 @@ def main():
     avg_arts = sum(len(r["article_ids"]) for r in all_fc) / len(all_fc) if all_fc else 0
     art_hist = Counter(len(r["article_ids"]) for r in all_fc)
     gt_dist_fb = Counter(r["ground_truth"] for r in all_fc if r["benchmark"] == "forecastbench")
-    gt_dist_m24 = Counter(r["ground_truth"] for r in all_fc if r["benchmark"] == "mirai-2024")
+    gt_dist_gdc = Counter(r["ground_truth"] for r in all_fc if r["benchmark"] == "gdelt-cameo")
 
     meta = {
         "total_forecasts": len(all_fc),
@@ -224,7 +306,7 @@ def main():
         "article_count_histogram": dict(sorted(art_hist.items())),
         "ground_truth_distribution": {
             "forecastbench": dict(gt_dist_fb),
-            "mirai-2024": dict(gt_dist_m24),
+            "gdelt-cameo": dict(gt_dist_gdc),
         },
         "output_path": str(OUT_FC),
     }

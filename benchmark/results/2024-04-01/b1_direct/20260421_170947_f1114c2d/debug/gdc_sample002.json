@@ -1,0 +1,33 @@
+{
+  "fd_id": "gdc_sample002",
+  "hypothesis_set": [
+    "Verbal cooperation",
+    "Material cooperation",
+    "Verbal conflict",
+    "Material conflict"
+  ],
+  "ground_truth": "Verbal conflict",
+  "predicted_class": "Verbal conflict",
+  "prob_distribution": {
+    "Verbal cooperation": 0.15,
+    "Material cooperation": 0.1,
+    "Verbal conflict": 0.5,
+    "Material conflict": 0.25
+  },
+  "latency_sec": 2.913,
+  "requests": [
+    {
+      "custom_id": "gdc_sample002::b1_direct",
+      "rendered_prompt_system": "You are an expert forecaster. Always respond with valid JSON only. Do not wrap the JSON in code blocks.",
+      "rendered_prompt_user": "Forecasting question: What is the most likely next interaction between USA and CHN in the coming week?\n\nBackground / resolution criteria:\nRecent bilateral tensions around trade and Taiwan.\n\nCandidate hypotheses (probabilities must sum to 1.0):\n  - Verbal cooperation: Public statements signaling cooperation or support.\n  - Material cooperation: Concrete cooperative actions such as aid or agreements.\n  - Verbal conflict: Public statements of criticism or threats.\n  - Material conflict: Concrete hostile actions such as sanctions or force.\n\nRelevant articles:\n(not provided; use general knowledge)\n\nForecast point: 2024-04-01\nResolution date: 2024-04-08\n\nAssign calibrated probabilities based on the specific evidence. Do not default to uniform or round values. Probabilities must sum to 1.0.\n\nReturn JSON only (no prose, no code fences):\n{\n  \"probabilities\": {\"Verbal cooperation\": <float>, \"Material cooperation\": <float>, \"Verbal conflict\": <float>, \"Material conflict\": <float>},\n  \"prediction\": \"<one of: Verbal cooperation, Material cooperation, Verbal conflict, Material conflict>\",\n  \"reasoning\": \"<one or two concise sentences>\"\n}",
+      "response_raw": "{\n  \"probabilities\": {\n    \"Verbal cooperation\": 0.15,\n    \"Material cooperation\": 0.10,\n    \"Verbal conflict\": 0.50,\n    \"Material conflict\": 0.25\n  },\n  \"prediction\": \"Verbal conflict\",\n  \"reasoning\": \"Given the recent tensions surrounding trade and Taiwan, it is likely that both nations will engage in public statements of criticism or threats rather than cooperative actions.\"\n}",
+      "usage": {
+        "completion_tokens": 96,
+        "prompt_tokens": 278,
+        "total_tokens": 374,
+        "completion_tokens_details": "CompletionTokensDetails(accepted_prediction_tokens=0, audio_tokens=0, reasoning_tokens=0, rejected_prediction_tokens=0)",
+        "prompt_tokens_details": "PromptTokensDetails(audio_tokens=0, cached_tokens=0)"
+      }
+    }
+  ]
+}

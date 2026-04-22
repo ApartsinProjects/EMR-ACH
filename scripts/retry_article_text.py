@@ -124,36 +124,24 @@ def fetch_via_wayback(url: str) -> str:
 
 
 def fetch_one(url: str) -> str:
-    """Fetch URL with UA rotation, charset detection, fallback extraction, Wayback fallback."""
-    session = requests.Session()
-    uas = [UA_CHROME, UA_FIREFOX]
-    random.shuffle(uas)
-    for ua in uas:
-        headers = {**BROWSER_HEADERS, "User-Agent": ua}
-        try:
-            resp = session.get(url, headers=headers, timeout=TIMEOUT, allow_redirects=True)
-            ct = (resp.headers.get("content-type", "") or "").lower()
-            if ct.startswith(("image/", "video/", "audio/", "application/zip", "application/octet")):
-                return ""
-            if resp.status_code in (429, 503):
-                time.sleep(5)
-                continue
-            if resp.status_code >= 400:
-                continue
-            html = decode_body(resp)
-            if not html:
-                continue
-            text = extract_with_fallbacks(html, url)
-            if text and len(text) >= 200:
-                return text
-        except (requests.exceptions.Timeout,
-                requests.exceptions.ConnectionError,
-                requests.exceptions.SSLError):
-            continue
-        except Exception:
-            continue
-    # final fallback: Wayback Machine
-    return fetch_via_wayback(url)
+    """5-layer cascade: plain HTTP + UA rotation → Playwright → Wayback
+    → archive.today → Common Crawl. All layers wrapped in try/except.
+    Implemented by scripts/fetch_text_multi.py."""
+    try:
+        from fetch_text_multi import fetch_text, FetchOptions   # local import for speed
+    except ImportError:
+        # fetch_text_multi.py lives next to this file; ensure it's importable
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).parent))
+        from fetch_text_multi import fetch_text, FetchOptions
+    return fetch_text(url, FetchOptions(
+        timeout=TIMEOUT,
+        min_chars=200,
+        enable_playwright=True,
+        enable_wayback=True,
+        enable_archive_today=True,
+        enable_common_crawl=True,
+    ))
 
 
 def main():

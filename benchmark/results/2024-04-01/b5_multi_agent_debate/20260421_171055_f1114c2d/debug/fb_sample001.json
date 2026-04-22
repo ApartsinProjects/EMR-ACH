@@ -1,0 +1,42 @@
+{
+  "fd_id": "fb_sample001",
+  "hypothesis_set": [
+    "Yes",
+    "No"
+  ],
+  "ground_truth": "No",
+  "predicted_class": "Yes",
+  "prob_distribution": {
+    "Yes": 0.65,
+    "No": 0.35
+  },
+  "latency_sec": 5.043,
+  "requests": [
+    {
+      "custom_id": "fb_sample001::b5_multi_agent_debate::r0::a0",
+      "rendered_prompt_system": "You are an expert forecaster. Always respond with valid JSON only. Do not wrap the JSON in code blocks.",
+      "rendered_prompt_user": "Forecasting question: Will an AI system play a major artistic role in the 2024 Olympic opening ceremonies?\n\nBackground / resolution criteria:\nOlympic ceremonies often feature emerging technology. Market resolves YES if a credible AI system has a headlining role.\n\nCandidate hypotheses (probabilities must sum to 1.0):\n  - Yes: The event described in the question occurred by the resolution date.\n  - No: The event did not occur by the resolution date.\n\nRelevant articles:\n[Article 1 | 2024-03-29] Demo article one\nReports indicate growing tensions between the two countries amid new trade disputes.\n\n[Article 2 | 2024-03-30] Demo article two\nTech firms announced several AI partnerships for media and live-events in 2024.\n\nForecast point: 2024-04-01\nResolution date: 2024-07-27\n\nThink step-by-step before answering. Consider (a) base rates, (b) the strongest evidence for each hypothesis, (c) disconfirming evidence, (d) recency. Only then output your calibrated probabilities. Probabilities must sum to 1.0.\n\nReturn JSON only (no prose, no code fences):\n{\n  \"probabilities\": {\"Yes\": <float>, \"No\": <float>},\n  \"prediction\": \"<one of: Yes, No>\",\n  \"reasoning\": \"<one or two concise sentences>\"\n}",
+      "response_raw": "{\n  \"probabilities\": {\"Yes\": 0.65, \"No\": 0.35},\n  \"prediction\": \"Yes\",\n  \"reasoning\": \"Recent announcements of AI partnerships for live-events suggest a growing trend towards integrating AI into major productions, increasing the likelihood of a significant AI role in the ceremonies.\"\n}",
+      "usage": {
+        "completion_tokens": 67,
+        "prompt_tokens": 324,
+        "total_tokens": 391,
+        "completion_tokens_details": "CompletionTokensDetails(accepted_prediction_tokens=0, audio_tokens=0, reasoning_tokens=0, rejected_prediction_tokens=0)",
+        "prompt_tokens_details": "PromptTokensDetails(audio_tokens=0, cached_tokens=0)"
+      }
+    },
+    {
+      "custom_id": "fb_sample001::b5_multi_agent_debate::r0::a1",
+      "rendered_prompt_system": "You are an expert forecaster. Always respond with valid JSON only. Do not wrap the JSON in code blocks.",
+      "rendered_prompt_user": "Forecasting question: Will an AI system play a major artistic role in the 2024 Olympic opening ceremonies?\n\nBackground / resolution criteria:\nOlympic ceremonies often feature emerging technology. Market resolves YES if a credible AI system has a headlining role.\n\nCandidate hypotheses (probabilities must sum to 1.0):\n  - Yes: The event described in the question occurred by the resolution date.\n  - No: The event did not occur by the resolution date.\n\nRelevant articles:\n[Article 1 | 2024-03-29] Demo article one\nReports indicate growing tensions between the two countries amid new trade disputes.\n\n[Article 2 | 2024-03-30] Demo article two\nTech firms announced several AI partnerships for media and live-events in 2024.\n\nForecast point: 2024-04-01\nResolution date: 2024-07-27\n\nThink step-by-step before answering. Consider (a) base rates, (b) the strongest evidence for each hypothesis, (c) disconfirming evidence, (d) recency. Only then output your calibrated probabilities. Probabilities must sum to 1.0.\n\nReturn JSON only (no prose, no code fences):\n{\n  \"probabilities\": {\"Yes\": <float>, \"No\": <float>},\n  \"prediction\": \"<one of: Yes, No>\",\n  \"reasoning\": \"<one or two concise sentences>\"\n}",
+      "response_raw": "{\n  \"probabilities\": {\"Yes\": 0.65, \"No\": 0.35},\n  \"prediction\": \"Yes\",\n  \"reasoning\": \"Recent announcements of AI partnerships for media and live events suggest a significant role for AI technology, aligning with the trend of incorporating emerging technologies in Olympic ceremonies.\"\n}",
+      "usage": {
+        "completion_tokens": 66,
+        "prompt_tokens": 324,
+        "total_tokens": 390,
+        "completion_tokens_details": "CompletionTokensDetails(accepted_prediction_tokens=0, audio_tokens=0, reasoning_tokens=0, rejected_prediction_tokens=0)",
+        "prompt_tokens_details": "PromptTokensDetails(audio_tokens=0, cached_tokens=0)"
+      }
+    }
+  ]
+}

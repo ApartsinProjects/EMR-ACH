@@ -1,0 +1,108 @@
+# Baselines battery config.
+# Every baseline declared here, shared defaults at top.
+#
+# Cost-optimized profile (2026-04-21): gpt-4o-mini + reduced sampling params.
+# Estimated cost: ~$0.023 / FD / full 9-baseline run (Batch API).
+# For ~2000 FDs -> ~$45 total.
+#
+# Naming convention (2026-04-22):
+#   The b1_*/b2_* etc. keys are stable code identifiers (used in result paths
+#   and metrics_*.json — do NOT rename without migration). short_name and
+#   display_name are human-readable labels surfaced in logs and paper tables.
+#   Prefix convention:
+#     no_ctx_*  = no articles in the prompt (isolates LLM prior)
+#     ctx_*     = top-10 articles injected (default for B3+)
+#   Suffix convention: the reasoning/aggregation mechanism.
+
+defaults:
+  model:             "gpt-4o-mini-2024-07-18"   # cheapest current OpenAI; ~16x cheaper than 4o
+  temperature:       0.0
+  max_tokens:        512
+  batch_api:         true
+  response_format:   {type: "json_object"}
+
+baselines:
+  b1_direct:
+    class: "methods.b1_direct.B1Direct"
+    short_name:   "no_ctx"
+    display_name: "No-Context Direct"
+    description:  "1 LLM call, no articles, direct hypothesis pick."
+
+  b2_cot:
+    class: "methods.b2_cot.B2CoT"
+    short_name:   "no_ctx_cot"
+    display_name: "No-Context CoT"
+    description:  "1 CoT call, no articles."
+
+  b3_rag:
+    class: "methods.b3_rag.B3RAG"
+    short_name:   "ctx_direct"
+    display_name: "Context Direct"
+    description:  "1 call with top-10 articles, no chain-of-thought."
+    max_articles:    10
+
+  b3b_rag_claims:
+    # Wave-3 experiment: per-article claim extraction pre-pass.
+    # Round 0: extract 2-3 forecast-relevant facts per article.
+    # Round 1: standard RAG prompt with claims replacing raw article text.
+    # ~11x the API calls of B3 (N FDs * 10 articles + N FDs) at worst.
+    class: "methods.b3b_rag_claims.B3bRAGClaims"
+    short_name:   "ctx_direct_claims"
+    display_name: "Context Direct (Claim-Extraction)"
+    description:  "Per-article 3-fact extraction pre-pass, then 1-call pick."
+    max_articles:    10
+
+  b4_self_consistency:
+    class: "methods.b4_self_consistency.B4SelfConsistency"
+    short_name:   "ctx_vote_cot"
+    display_name: "Context CoT-Vote (k=4)"
+    description:  "k=4 CoT samples at T=0.7, plurality vote over picks."
+    temperature:     0.7
+    n_samples:       4              # was 8; Wang et al. use k=5, anything >=3 is OK
+    max_articles:    10
+
+  b5_multi_agent_debate:
+    class: "methods.b5_multi_agent_debate.B5MultiAgentDebate"
+    short_name:   "ctx_debate"
+    display_name: "Context Debate (n=2)"
+    description:  "2 advocate agents, 1 round, judge picks the winner."
+    n_agents:        2              # was 3
+    n_rounds:        1              # was 2; 1 round captures the debate mechanism
+    max_articles:    10
+
+  b6_tree_of_thoughts:
+    class: "methods.b6_tree_of_thoughts.B6TreeOfThoughts"
+    short_name:   "ctx_tree"
+    display_name: "Context Tree-of-Thought (B=2,D=2)"
+    description:  "Branch-and-score with breadth=2, depth=2; best path picks."
+    breadth:         2              # was 3; ToT canonical demos use B=2-3
+    depth:           2
+    max_articles:    10
+
+  b7_reflexion:
+    class: "methods.b7_reflexion.B7Reflexion"
+    short_name:   "ctx_reflect"
+    display_name: "Context Reflect (k=2)"
+    description:  "Initial pick, self-critique, revised pick. 2 iterations."
+    n_iterations:    2              # was 3; 2 is sufficient for convergence
+    max_articles:    10
+
+  b8_verbalized_confidence:
+    class: "methods.b8_verbalized_confidence.B8VerbalizedConfidence"
+    short_name:   "ctx_deprecated"
+    display_name: "DEPRECATED (B3-equivalent under pick-only)"
+    description:  "Verbalized Confidence no longer applies under pick-only; paper uses majority-class reference instead."
+    max_articles:    10
+
+  b9_llm_ensemble:
+    class: "methods.b9_llm_ensemble.B9LLMEnsemble"
+    short_name:   "ctx_ensemble"
+    display_name: "Context Temp-Ensemble (T=0/0.5/1)"
+    description:  "3 calls at temperatures 0, 0.5, 1.0; plurality vote."
+    max_articles:    10
+    # was 6; dropped all gpt-4o variants. 3 configs show ensembling effect
+    # (temperature-diversity) at minimum cost.
+    configs:
+      - {model: "gpt-4o-mini-2024-07-18", temperature: 0.0}
+      - {model: "gpt-4o-mini-2024-07-18", temperature: 0.5}
+      - {model: "gpt-4o-mini-2024-07-18", temperature: 1.0}

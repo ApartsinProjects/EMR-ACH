@@ -1,0 +1,13 @@
+{
+  "n": 79,
+  "accuracy": 83.54,
+  "n_classes": 2,
+  "brier_score": 0.1332,
+  "ece": 0.1222,
+  "positive_class": "Yes",
+  "method": "b1_direct",
+  "model": "gpt-4o-mini-2024-07-18",
+  "temperature": 0.0,
+  "cutoff": "2026-01-01",
+  "run_id": "20260421_172608_f1114c2d"
+}

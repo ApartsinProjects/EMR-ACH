@@ -39,19 +39,66 @@ META = UNI / "quality_meta.json"
 
 
 def parse_date(s: str) -> datetime | None:
+    """Parse first 10 chars of a string as ISO date (YYYY-MM-DD).
+
+    Returns None on any failure (empty string, None, non-date, wrong format).
+    Used in hot loops across the quality filter.
+    """
     try:
         return datetime.strptime((s or "")[:10], "%Y-%m-%d")
-    except Exception:
+    except (ValueError, TypeError):
         return None
 
 
-def main():
+def main() -> None:
+    """CLI entry point — see module docstring for flag reference."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--min-arts", type=int, default=3)
-    ap.add_argument("--min-days", type=int, default=2)
+    ap.add_argument("--min-days", type=int, default=2,
+                    help="Minimum distinct article-publish days. Applied globally "
+                         "unless --min-days-per-benchmark overrides per-source.")
+    ap.add_argument("--min-days-per-benchmark", default=None,
+                    help="Per-benchmark override for --min-days, e.g. "
+                         "'gdelt-cameo=1,forecastbench=2,earnings=2'. "
+                         "GDELT-CAMEO oracle articles cluster on the event day by "
+                         "design; applying a 2-day spread threshold to them is a "
+                         "methodological mismatch that drops ~1400 FDs unnecessarily.")
     ap.add_argument("--min-chars", type=int, default=1500)
     ap.add_argument("--min-q-chars", type=int, default=20)
+    ap.add_argument("--model-cutoff", default=None,
+                    help="ISO date (YYYY-MM-DD) of the evaluator LLM's training cutoff. "
+                         "Any FD with resolution_date <= cutoff is dropped as model-training leakage. "
+                         "Example: --model-cutoff 2024-04-01 for GPT-4o. "
+                         "Defaults to None (no cutoff check) for backwards compatibility.")
+    ap.add_argument("--cutoff-buffer-days", type=int, default=0,
+                    help="Require resolution_date > cutoff + N days, to hedge against "
+                         "continued-training / RLHF drift past the stated cutoff.")
     args = ap.parse_args()
+
+    # Parse per-benchmark day-spread overrides
+    min_days_per_bench: dict[str, int] = {}
+    if args.min_days_per_benchmark:
+        for tok in args.min_days_per_benchmark.split(","):
+            if "=" in tok:
+                k, v = tok.split("=", 1)
+                try:
+                    min_days_per_bench[k.strip()] = int(v)
+                except ValueError:
+                    pass
+        if min_days_per_bench:
+            print(f"Per-benchmark --min-days overrides: {min_days_per_bench}")
+
+    cutoff_dt = None
+    if args.model_cutoff:
+        cutoff_dt = parse_date(args.model_cutoff)
+        if not cutoff_dt:
+            print(f"[ERROR] --model-cutoff '{args.model_cutoff}' not parseable as YYYY-MM-DD")
+            return
+        from datetime import timedelta
+        cutoff_dt = cutoff_dt + timedelta(days=args.cutoff_buffer_days)
+        print(f"Enforcing resolution_date > {cutoff_dt.date()} "
+              f"(cutoff + {args.cutoff_buffer_days}d buffer) "
+              f"- model-training leakage guard")
 
     forecasts = [json.loads(l) for l in open(FC_FILE, encoding="utf-8")]
     articles = {json.loads(l)["id"]: json.loads(l) for l in open(ART_FILE, encoding="utf-8")}
@@ -88,12 +135,14 @@ def main():
         if len(linked) < args.min_arts:
             reasons.append(f"n_articles<{args.min_arts}")
 
-        # 2. date spread
+        # 2. date spread (per-benchmark override allowed)
         dates = [parse_date(a.get("publish_date", "")) for a in linked]
         dates = [d for d in dates if d]
         day_set = {d.date() for d in dates}
-        if len(day_set) < args.min_days:
-            reasons.append(f"day_spread<{args.min_days}")
+        fc_bench = fc.get("benchmark", "")
+        min_days_eff = min_days_per_bench.get(fc_bench, args.min_days)
+        if len(day_set) < min_days_eff:
+            reasons.append(f"day_spread<{min_days_eff}")
 
         # 3. min chars
         total_chars = sum(a.get("char_count", 0) for a in linked)
@@ -105,6 +154,16 @@ def main():
         if qlen < args.min_q_chars:
             reasons.append(f"question_len<{args.min_q_chars}")
 
+        # 5. Model-training leakage guard.
+        # The answer becomes publicly observable in news at ~resolution_date.
+        # If the LLM's training cutoff is before that, the model cannot have
+        # trained on the outcome. We require: resolution_date > cutoff + buffer.
+        # (Article-level retrieval leakage is handled separately by the
+        #  publish_date < forecast_point pre-prune in step 0 above.)
+        res_date = parse_date(fc.get("resolution_date", ""))
+        if cutoff_dt and res_date and res_date <= cutoff_dt:
+            reasons.append(f"resolution_date<=cutoff({args.model_cutoff}+{args.cutoff_buffer_days}d)")
+
         src = fc.get("source", "?")
         if reasons:
             dropped.append({**fc, "_drop_reasons": reasons})
@@ -114,9 +173,22 @@ def main():
             accepted.append(fc)
             per_src_kept[src] += 1
 
+    # SHIPPED-DATASET SCHEMA: strip pipeline-internal fields so forecasts_filtered.jsonl
+    # is self-contained for an evaluator. Fields not in this whitelist are removed
+    # from each accepted FD before writing. `metadata` is dropped entirely.
+    shipped_fields = {
+        "id", "benchmark", "source",
+        "hypothesis_set", "hypothesis_definitions",
+        "question", "background",
+        "forecast_point", "resolution_date",
+        "ground_truth", "ground_truth_idx",
+        "crowd_probability", "lookback_days",
+        "article_ids",
+    }
     with open(OUT_OK, "w", encoding="utf-8") as f:
         for r in accepted:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+            clean = {k: v for k, v in r.items() if k in shipped_fields}
+            f.write(json.dumps(clean, ensure_ascii=False) + "\n")
     with open(OUT_BAD, "w", encoding="utf-8") as f:
         for r in dropped:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")

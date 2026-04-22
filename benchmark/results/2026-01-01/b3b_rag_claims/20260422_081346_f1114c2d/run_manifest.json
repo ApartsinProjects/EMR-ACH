@@ -1,0 +1,38 @@
+{
+  "run_id": "20260422_081346_f1114c2d",
+  "timestamp": "2026-04-22T08:13:46",
+  "method": "b3b_rag_claims",
+  "cutoff": "2026-01-01",
+  "model": "gpt-4o-mini-2024-07-18",
+  "temperature": 0.0,
+  "max_tokens": 512,
+  "git_sha": "f1114c2d",
+  "mode": "batch",
+  "smoke_n": null,
+  "sync": false,
+  "n_fds": 535,
+  "n_articles": 2638,
+  "fd_ids_sample": [
+    "fb_RzsZN6SlUp",
+    "fb_0x2239eba5e0",
+    "fb_0xa320756f4f"
+  ],
+  "config_snapshot": {
+    "defaults": {
+      "model": "gpt-4o-mini-2024-07-18",
+      "temperature": 0.0,
+      "max_tokens": 512,
+      "batch_api": true,
+      "response_format": {
+        "type": "json_object"
+      }
+    },
+    "method": {
+      "class": "methods.b3b_rag_claims.B3bRAGClaims",
+      "short_name": "ctx_direct_claims",
+      "display_name": "Context Direct (Claim-Extraction)",
+      "description": "Per-article 3-fact extraction pre-pass, then 1-call pick.",
+      "max_articles": 10
+    }
+  }
+}

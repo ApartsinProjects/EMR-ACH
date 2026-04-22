@@ -1,0 +1,87 @@
+# Benchmark build config used to generate the sibling files.
+# Reproduce with:
+#   python scripts/build_benchmark.py --config <path-to-this-file>
+# Generated: 2026-04-21T17:58:34  (git: f1114c2d08f1)
+
+model_cutoff: '2026-01-01'
+cutoff_buffer_days: 0
+benchmarks:
+  forecastbench:
+    enabled: true
+    prediction_market_sources:
+    - polymarket
+    - metaculus
+    - manifold
+    - infer
+  gdelt_cameo:
+    enabled: true
+    context_start: '202601'
+    context_end: '202602'
+    test_month: '202603'
+    all_end: '202603'
+    min_daily_mentions: 50
+    max_download_workers: 16
+  earnings:
+    enabled: true
+    start: '2026-01-01'
+    end: '2026-04-21'
+    tickers: null
+    threshold: 0.02
+quality:
+  min_articles: 3
+  min_distinct_days: 2
+  min_chars: 1500
+  min_question_chars: 20
+relevance:
+  embedding_model: sentence-transformers/all-mpnet-base-v2
+  batch_size: 32
+  max_text_chars: 500
+  sources:
+    polymarket:
+      embedding_threshold: 0.3
+      keyword_overlap_min: 0
+      lookback_days: 30
+      top_k: 10
+      recency_weight: 0.3
+      actor_match_required: false
+    metaculus:
+      embedding_threshold: 0.3
+      keyword_overlap_min: 0
+      lookback_days: 30
+      top_k: 10
+      recency_weight: 0.3
+      actor_match_required: false
+    manifold:
+      embedding_threshold: 0.3
+      keyword_overlap_min: 0
+      lookback_days: 30
+      top_k: 10
+      recency_weight: 0.3
+      actor_match_required: false
+    infer:
+      embedding_threshold: 0.3
+      keyword_overlap_min: 0
+      lookback_days: 30
+      top_k: 10
+      recency_weight: 0.3
+      actor_match_required: false
+    gdelt-kg:
+      embedding_threshold: 0.0
+      keyword_overlap_min: 0
+      lookback_days: 90
+      top_k: 10
+      recency_weight: 0.3
+      actor_match_required: true
+    yfinance:
+      embedding_threshold: 0.3
+      keyword_overlap_min: 0
+      lookback_days: 14
+      top_k: 10
+      recency_weight: 0.3
+      actor_match_required: false
+output:
+  root: benchmark/data
+secrets:
+  openai_api_key: OPENAI_API_KEY
+  newsapi_key: NEWSAPI_KEY
+  metaculus_token: METACULUS_TOKEN

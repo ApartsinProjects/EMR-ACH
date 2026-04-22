@@ -1,11 +1,11 @@
 """
 Unify article records from ForecastBench (GDELT DOC API + trafilatura) and
-MIRAI-2024 (GDELT KG oracle links + trafilatura) into a single article file.
+GDELT-CAMEO (GDELT KG oracle links + trafilatura) into a single article file.
 
 Reads (read-only):
   data/fb_articles_full.jsonl                 - ForecastBench GDELT + full text
-  data/mirai_2024/data_news_full.csv          - MIRAI-2024 oracle articles (if exists)
-  data/mirai_2024/data_news.csv               - fallback if *_full.csv missing
+  data/gdelt_cameo/data_news_full.csv          - GDELT-CAMEO oracle articles (if exists)
+  data/gdelt_cameo/data_news.csv               - fallback if *_full.csv missing
 
 Writes:
   data/unified/articles.jsonl                 - deduplicated by sha1(url)[:12]
@@ -14,7 +14,7 @@ Writes:
 Article schema:
   { id, url, title, text, title_text, publish_date, source_domain,
     gdelt_themes, gdelt_tone, actors, cameo_code, char_count,
-    provenance: ["forecastbench" | "mirai-2024", ...] }
+    provenance: ["forecastbench" | "gdelt-cameo", ...] }
 
 Usage:
   python scripts/unify_articles.py
@@ -26,6 +26,28 @@ import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
+# data_news_full.csv's Text column can exceed the default 128k csv field limit.
+# Helper below raises + restores the limit only around the specific reader that
+# needs it, so we don't leave a process-wide side effect on import.
+
+def _with_raised_csv_field_limit(fn):
+    """Decorator: bump csv.field_size_limit for the duration of fn, then restore."""
+    import functools
+    @functools.wraps(fn)
+    def inner(*args, **kwargs):
+        prev = csv.field_size_limit()
+        csv.field_size_limit(min(sys.maxsize, 2**31 - 1))
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            csv.field_size_limit(prev)
+    return inner
+# Fast JSONL I/O (orjson if available, stdlib json fallback) — see _fast_jsonl.py
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).parent))
+from _fast_jsonl import loads as _j_loads, dumps as _j_dumps
+
 ROOT = Path(__file__).parent.parent
 OUT_DIR = ROOT / "data" / "unified"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -34,18 +56,32 @@ OUT_META = OUT_DIR / "articles_meta.json"
 
 FB_FULL = ROOT / "data" / "fb_articles_full.jsonl"
 FB_SUPP = ROOT / "data" / "gdelt_articles_supplement.jsonl"   # Step B additions
-MIRAI_FULL = ROOT / "data" / "mirai_2024" / "data_news_full.csv"
-MIRAI_PLAIN = ROOT / "data" / "mirai_2024" / "data_news.csv"
+GDELT_CAMEO_FULL = ROOT / "data" / "gdelt_cameo" / "data_news_full.csv"
+GDELT_CAMEO_PLAIN = ROOT / "data" / "gdelt_cameo" / "data_news.csv"
+EARNINGS_NEWS = ROOT / "data" / "earnings" / "earnings_articles.jsonl"  # yfinance + GDELT per-ticker
+FB_NEWS       = ROOT / "data" / "forecastbench" / "forecastbench_articles.jsonl"
+GDC_NEWS      = ROOT / "data" / "gdelt_cameo" / "gdelt_cameo_news.jsonl"
 
 
 def art_id(url: str) -> str:
+    """Stable 12-hex-char article identifier derived from URL SHA1.
+
+    Collisions are astronomically unlikely at the corpus sizes we deal with
+    (50k–200k articles), but if one occurs the downstream dedup_merge() will
+    union provenance correctly — the semantics are "same URL → same article".
+    """
     return "art_" + hashlib.sha1(url.encode("utf-8")).hexdigest()[:12]
 
 
 def domain_of(url: str) -> str:
+    """Extract lowercased hostname from a URL, stripping leading `www.`.
+
+    Returns empty string on any parse failure (URLs are permissive by design;
+    fetchers call this in hot loops and benefit from a never-raise contract).
+    """
     try:
         return urlparse(url).netloc.lower().replace("www.", "")
-    except Exception:
+    except (AttributeError, ValueError):
         return ""
 
 
@@ -55,7 +91,7 @@ def load_jsonl_articles(path: Path, provenance_tag: str) -> list[dict]:
     out = []
     with open(path, encoding="utf-8") as f:
         for line in f:
-            r = json.loads(line)
+            r = _j_loads(line)
             url = r.get("url", "")
             if not url:
                 continue
@@ -91,8 +127,90 @@ def load_forecastbench_supplement() -> list[dict]:
     return load_jsonl_articles(FB_SUPP, "forecastbench-stepB")
 
 
-def load_mirai_2024() -> list[dict]:
-    src = MIRAI_FULL if MIRAI_FULL.exists() else (MIRAI_PLAIN if MIRAI_PLAIN.exists() else None)
+def _load_per_fd_news(path: Path, id_prefix: str, actors_from: str = "") -> list[dict]:
+    """Shared loader for per-FD news files produced by
+      - fetch_earnings_news.py         (ticker in `ticker` field)
+      - fetch_forecastbench_news.py    (question-keyword retrieval)
+      - fetch_gdelt_cameo_news.py      (actor-pair retrieval)
+    All three use the same record schema: {id,url,title,text,date,source,provenance,...}
+    plus optional domain-specific fields we pass through as `actors`.
+    """
+    if not path.exists():
+        return []
+    out = []
+    n_bad = 0
+    for line in path.open(encoding="utf-8"):
+        try:
+            r = _j_loads(line)
+        except (ValueError, UnicodeDecodeError):
+            n_bad += 1
+            continue
+        url = r.get("url", "")
+        if not url:
+            continue
+        title = r.get("title", "") or ""
+        text = r.get("text", "") or ""
+        title_text = (title + "\n" + text).strip()
+        prov = r.get("provenance") or id_prefix
+        actors_val = r.get(actors_from, "") if actors_from else ""
+        actors = [actors_val] if isinstance(actors_val, str) and actors_val else (actors_val if isinstance(actors_val, list) else [])
+        out.append({
+            "id":            art_id(url),
+            "url":           url,
+            "title":         title,
+            "text":          text,
+            "title_text":    title_text,
+            "publish_date":  r.get("date", "") or "",
+            "source_domain": r.get("source", "") or domain_of(url),
+            "gdelt_themes":  [],
+            "gdelt_tone":    0.0,
+            "actors":        actors,
+            "cameo_code":    "",
+            "char_count":    len(title_text),
+            "provenance":    [prov],
+        })
+    return out
+
+
+def load_earnings_news() -> list[dict]:
+    """Load earnings-specific news (Finnhub + Google News + per-ticker GDELT)."""
+    if not EARNINGS_NEWS.exists():
+        return []
+    out = []
+    for line in EARNINGS_NEWS.open(encoding="utf-8"):
+        try:
+            r = _j_loads(line)
+        except (ValueError, UnicodeDecodeError):
+            continue
+        url = r.get("url", "")
+        if not url:
+            continue
+        title = r.get("title", "") or ""
+        text = r.get("text", "") or ""
+        title_text = (title + "\n" + text).strip()
+        prov = r.get("provenance") or "earnings-news"
+        ticker = r.get("ticker", "") or ""
+        out.append({
+            "id":            art_id(url),
+            "url":           url,
+            "title":         title,
+            "text":          text,
+            "title_text":    title_text,
+            "publish_date":  r.get("date", "") or "",
+            "source_domain": r.get("source", "") or domain_of(url),
+            "gdelt_themes":  [],
+            "gdelt_tone":    0.0,
+            "actors":        [ticker] if ticker else [],
+            "cameo_code":    "",
+            "char_count":    len(title_text),
+            "provenance":    [prov],
+        })
+    return out
+
+
+@_with_raised_csv_field_limit
+def load_gdelt_cameo() -> list[dict]:
+    src = GDELT_CAMEO_FULL if GDELT_CAMEO_FULL.exists() else (GDELT_CAMEO_PLAIN if GDELT_CAMEO_PLAIN.exists() else None)
     if src is None:
         print(f"[WARN] No MIRAI-2024 article CSV found; skipping (build still running?)")
         return []
@@ -119,7 +237,7 @@ def load_mirai_2024() -> list[dict]:
                 "actors": [a for a in (row.get("Actor1CountryCode", ""), row.get("Actor2CountryCode", "")) if a],
                 "cameo_code": row.get("EventCode", "") or "",
                 "char_count": len(title_text),
-                "provenance": ["mirai-2024"],
+                "provenance": ["gdelt-cameo"],
             })
     return out
 
@@ -162,11 +280,23 @@ def main():
     print(f"  {len(fb_supp)} records")
 
     print("Loading MIRAI-2024 articles...")
-    m24 = load_mirai_2024()
+    m24 = load_gdelt_cameo()
     print(f"  {len(m24)} records")
 
+    print("Loading earnings news (Finnhub + Google News + per-ticker GDELT)...")
+    earn = load_earnings_news()
+    print(f"  {len(earn)} records")
+
+    print("Loading ForecastBench per-FD news (NYT + Guardian + Google + GDELT)...")
+    fb_news = _load_per_fd_news(FB_NEWS, "fb-news")
+    print(f"  {len(fb_news)} records")
+
+    print("Loading GDELT-CAMEO pre-event news (replaces same-day oracle)...")
+    gdc_news = _load_per_fd_news(GDC_NEWS, "gdelt-cameo-pre")
+    print(f"  {len(gdc_news)} records")
+
     print("Merging + deduplicating by URL hash...")
-    merged = dedup_merge(fb, fb_supp, m24)
+    merged = dedup_merge(fb, fb_supp, m24, earn, fb_news, gdc_news)
 
     with open(OUT_ART, "w", encoding="utf-8") as f:
         for r in merged:
@@ -184,7 +314,7 @@ def main():
         "with_full_text": with_text,
         "with_full_text_pct": round(100 * with_text / len(merged), 1) if merged else 0,
         "by_provenance": {"|".join(k): v for k, v in by_prov.items()},
-        "input_counts": {"forecastbench": len(fb), "mirai-2024": len(m24)},
+        "input_counts": {"forecastbench": len(fb), "gdelt-cameo": len(m24), "earnings-news": len(earn)},
         "output_path": str(OUT_ART),
     }
     with open(OUT_META, "w", encoding="utf-8") as f:

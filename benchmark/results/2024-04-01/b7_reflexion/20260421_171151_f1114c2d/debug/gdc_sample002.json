@@ -1,0 +1,59 @@
+{
+  "fd_id": "gdc_sample002",
+  "hypothesis_set": [
+    "Verbal cooperation",
+    "Material cooperation",
+    "Verbal conflict",
+    "Material conflict"
+  ],
+  "ground_truth": "Verbal conflict",
+  "predicted_class": "Verbal conflict",
+  "prob_distribution": {
+    "Verbal cooperation": 0.1,
+    "Material cooperation": 0.05,
+    "Verbal conflict": 0.55,
+    "Material conflict": 0.3
+  },
+  "latency_sec": 7.1,
+  "requests": [
+    {
+      "custom_id": "gdc_sample002::b7_reflexion::i0::forecast",
+      "rendered_prompt_system": "You are an expert forecaster. Always respond with valid JSON only. Do not wrap the JSON in code blocks.",
+      "rendered_prompt_user": "Forecasting question: What is the most likely next interaction between USA and CHN in the coming week?\n\nBackground / resolution criteria:\nRecent bilateral tensions around trade and Taiwan.\n\nCandidate hypotheses (probabilities must sum to 1.0):\n  - Verbal cooperation: Public statements signaling cooperation or support.\n  - Material cooperation: Concrete cooperative actions such as aid or agreements.\n  - Verbal conflict: Public statements of criticism or threats.\n  - Material conflict: Concrete hostile actions such as sanctions or force.\n\nRelevant articles:\n[Article 1 | 2024-03-29] Demo article one\nReports indicate growing tensions between the two countries amid new trade disputes.\n\nForecast point: 2024-04-01\nResolution date: 2024-04-08\n\nThink step-by-step before answering. Consider (a) base rates, (b) the strongest evidence for each hypothesis, (c) disconfirming evidence, (d) recency. Only then output your calibrated probabilities. Probabilities must sum to 1.0.\n\nReturn JSON only (no prose, no code fences):\n{\n  \"probabilities\": {\"Verbal cooperation\": <float>, \"Material cooperation\": <float>, \"Verbal conflict\": <float>, \"Material conflict\": <float>},\n  \"prediction\": \"<one of: Verbal cooperation, Material cooperation, Verbal conflict, Material conflict>\",\n  \"reasoning\": \"<one or two concise sentences>\"\n}",
+      "response_raw": "{\n  \"probabilities\": {\"Verbal cooperation\": 0.15, \"Material cooperation\": 0.10, \"Verbal conflict\": 0.50, \"Material conflict\": 0.25},\n  \"prediction\": \"Verbal conflict\",\n  \"reasoning\": \"Given the recent tensions around trade and Taiwan, the likelihood of public statements of criticism or threats is high, especially in light of ongoing disputes.\"\n}",
+      "usage": {
+        "completion_tokens": 88,
+        "prompt_tokens": 328,
+        "total_tokens": 416,
+        "completion_tokens_details": "CompletionTokensDetails(accepted_prediction_tokens=0, audio_tokens=0, reasoning_tokens=0, rejected_prediction_tokens=0)",
+        "prompt_tokens_details": "PromptTokensDetails(audio_tokens=0, cached_tokens=0)"
+      }
+    },
+    {
+      "custom_id": "gdc_sample002::b7_reflexion::i1::critique",
+      "rendered_prompt_system": "You are a careful critic of forecasts. Review the provided reasoning and produce a concise critique. Respond with valid JSON only.",
+      "rendered_prompt_user": "Forecast to critique:\n{\n  \"probabilities\": {\"Verbal cooperation\": 0.15, \"Material cooperation\": 0.10, \"Verbal conflict\": 0.50, \"Material conflict\": 0.25},\n  \"prediction\": \"Verbal conflict\",\n  \"reasoning\": \"Given the recent tensions around trade and Taiwan, the likelihood of public statements of criticism or threats is high, especially in light of ongoing disputes.\"\n}\n\nCritique the previous forecast: list at most three concrete weaknesses in the reasoning or use of evidence. Do not output probabilities.",
+      "response_raw": "{\n  \"critique\": [\n    {\n      \"weakness\": \"The reasoning relies heavily on recent tensions without providing specific examples or data to support the claim of high likelihood for verbal conflict.\"\n    },\n    {\n      \"weakness\": \"The forecast does not consider potential diplomatic efforts or historical patterns of conflict resolution that could mitigate the likelihood of verbal conflict.\"\n    },\n    {\n      \"weakness\": \"The probabilities assigned to each outcome appear to lack a clear rationale or empirical basis, making it difficult to assess their validity.\"\n    }\n  ]\n}",
+      "usage": {
+        "completion_tokens": 111,
+        "prompt_tokens": 152,
+        "total_tokens": 263,
+        "completion_tokens_details": "CompletionTokensDetails(accepted_prediction_tokens=0, audio_tokens=0, reasoning_tokens=0, rejected_prediction_tokens=0)",
+        "prompt_tokens_details": "PromptTokensDetails(audio_tokens=0, cached_tokens=0)"
+      }
+    },
+    {
+      "custom_id": "gdc_sample002::b7_reflexion::i1::forecast",
+      "rendered_prompt_system": "You are an expert forecaster. Always respond with valid JSON only. Do not wrap the JSON in code blocks.",
+      "rendered_prompt_user": "Forecasting question: What is the most likely next interaction between USA and CHN in the coming week?\n\nBackground / resolution criteria:\nRecent bilateral tensions around trade and Taiwan.\n\nCandidate hypotheses (probabilities must sum to 1.0):\n  - Verbal cooperation: Public statements signaling cooperation or support.\n  - Material cooperation: Concrete cooperative actions such as aid or agreements.\n  - Verbal conflict: Public statements of criticism or threats.\n  - Material conflict: Concrete hostile actions such as sanctions or force.\n\nRelevant articles:\n[Article 1 | 2024-03-29] Demo article one\nReports indicate growing tensions between the two countries amid new trade disputes.\n\nForecast point: 2024-04-01\nResolution date: 2024-04-08\n\nPrior forecast:\n{\n  \"probabilities\": {\"Verbal cooperation\": 0.15, \"Material cooperation\": 0.10, \"Verbal conflict\": 0.50, \"Material conflict\": 0.25},\n  \"prediction\": \"Verbal conflict\",\n  \"reasoning\": \"Given the recent tensions around trade and Taiwan, the likelihood of public statements of criticism or threats is high, especially in light of ongoing disputes.\"\n}\n\nA critic has flagged weaknesses (see 'critique' message history). Produce an improved forecast addressing those weaknesses. Think step-by-step before answering. Consider (a) base rates, (b) the strongest evidence for each hypothesis, (c) disconfirming evidence, (d) recency. Only then output your calibrated probabilities. Probabilities must sum to 1.0.\n\nReturn JSON only (no prose, no code fences):\n{\n  \"probabilities\": {\"Verbal cooperation\": <float>, \"Material cooperation\": <float>, \"Verbal conflict\": <float>, \"Material conflict\": <float>},\n  \"prediction\": \"<one of: Verbal cooperation, Material cooperation, Verbal conflict, Material conflict>\",\n  \"reasoning\": \"<one or two concise sentences>\"\n}",
+      "response_raw": "{\n  \"probabilities\": {\"Verbal cooperation\": 0.10, \"Material cooperation\": 0.05, \"Verbal conflict\": 0.55, \"Material conflict\": 0.30},\n  \"prediction\": \"Verbal conflict\",\n  \"reasoning\": \"The ongoing trade disputes and tensions over Taiwan suggest a high likelihood of public statements of criticism or threats, particularly given the recent escalation in rhetoric from both sides.\"\n}",
+      "usage": {
+        "completion_tokens": 91,
+        "prompt_tokens": 441,
+        "total_tokens": 532,
+        "completion_tokens_details": "CompletionTokensDetails(accepted_prediction_tokens=0, audio_tokens=0, reasoning_tokens=0, rejected_prediction_tokens=0)",
+        "prompt_tokens_details": "PromptTokensDetails(audio_tokens=0, cached_tokens=0)"
+      }
+    }
+  ]
+}

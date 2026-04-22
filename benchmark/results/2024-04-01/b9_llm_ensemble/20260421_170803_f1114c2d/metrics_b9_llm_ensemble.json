@@ -1,0 +1,47 @@
+{
+  "n": 2,
+  "accuracy": 50.0,
+  "per_benchmark": {
+    "forecastbench": {
+      "n": 1,
+      "accuracy": 0.0,
+      "n_classes": 2,
+      "brier_score": 0.36,
+      "ece": 0.6,
+      "positive_class": "Yes"
+    },
+    "gdelt_cameo": {
+      "n": 1,
+      "accuracy": 100.0,
+      "n_classes": 4,
+      "macro_f1": 0.25,
+      "per_class": {
+        "Verbal cooperation": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "Material cooperation": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "Verbal conflict": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "Material conflict": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        }
+      }
+    }
+  },
+  "method": "b9_llm_ensemble",
+  "model": "gpt-4o-mini-2024-07-18",
+  "temperature": 0.0,
+  "cutoff": "2024-04-01",
+  "run_id": "20260421_170803_f1114c2d"
+}

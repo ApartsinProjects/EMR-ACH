@@ -4,35 +4,94 @@
 *.env.local
 *.env.secret
 
-# Large / generated data files
+# ============================================================================
+# INTERMEDIATE data (pipeline scratch; regeneratable; NEVER committed)
+# ============================================================================
+# Raw upstream clones
 data/mirai_repo/
 data/forecastbench_repo/
-data/mirai_2024/kg_raw/
-data/mirai_2024/kg_tmp/
-data/mirai_2024/data_kg.csv
-data/mirai_2024/data_news.csv
-data/mirai_2024/data_news_full.csv
-data/mirai_2024/test/test_kg.csv
-data/mirai_extracted/
 data/fb_raw/
+
+# GDELT-CAMEO intermediate tables
+data/gdelt_cameo/kg_raw/
+data/gdelt_cameo/kg_tmp/
+data/gdelt_cameo/data_kg.csv
+data/gdelt_cameo/data_news.csv
+data/gdelt_cameo/data_news_full.csv
+data/gdelt_cameo/test/test_kg.csv
+
+# legacy (pre-rename)
+data/mirai_2024/
+data/mirai_extracted/
+
+# Bulk formats
 data/*.zip
 data/*.sqlite
 data/*.db
 
-# Large unified derived files (regenerable from scripts/unify_*.py + raw data)
-data/unified/articles.jsonl
-data/unified/article_embeddings.npy
-data/unified/forecast_embeddings.npy
+# ForecastBench-adjacent large blobs (re-fetchable)
 data/gdelt_articles.jsonl
 data/gdelt_articles_supplement.jsonl
 data/fb_articles_full.jsonl
 data/metaculus_questions.jsonl
 data/metaculus_news.jsonl
 
-# Raw batch API job results
-results/raw/
+# Per-FD news enrichment caches (re-fetchable via fetch_*_news.py scripts;
+# total size ~150 MB, grows on every run; keep out of git)
+data/forecastbench/forecastbench_articles.jsonl
+data/gdelt_cameo/gdelt_cameo_news.jsonl
+data/earnings/earnings_articles.jsonl
+data/earnings/earnings_articles.jsonl.pre_spam_filter
 
-# Python
+# ETD (Event Timeline Dossier) extraction outputs — regeneratable via
+# scripts/articles_to_facts.py. The SPEC + schema + prompt live under docs/
+# and ARE committed; only the per-run outputs are ignored.
+data/etd/facts.v*.jsonl
+data/etd/facts.current
+data/etd/facts.errors.jsonl
+data/etd/extract_runs.jsonl
+data/etd/smoke_dump_*.json
+
+# Pipeline STAGING (current live state — mutable between builds)
+data/unified/articles.jsonl
+data/unified/article_embeddings.npy
+data/unified/article_embeddings.*.npy
+data/unified/forecast_embeddings.npy
+data/unified/forecast_embeddings.*.npy
+data/unified/*.fp.txt
+data/unified/*.prev_*.txt
+
+# Versioned snapshots (preserved for audit, NOT for shipping)
+data/staged/
+
+# ============================================================================
+# SHIPPED benchmark (committed — this is the deliverable)
+# ============================================================================
+# Explicit un-ignore: benchmark/data/ is the shipped, versioned benchmark.
+# Large files like articles.jsonl are still committed (they're part of the
+# dataset release). Use Git LFS if they exceed GitHub's 100 MB file limit.
+!benchmark/data/
+!benchmark/data/**
+
+# Ignore Python-generated artifacts under benchmark/
+benchmark/**/__pycache__/
+benchmark/**/*.pyc
+benchmark/**/*.pyo
+
+# ============================================================================
+# AUDIT material (diagnostic; not shipped)
+# ============================================================================
+benchmark/audit/
+
+# ============================================================================
+# Experiment artifacts
+# ============================================================================
+results/raw/
+benchmark/results/*/*/*/*.log
+
+# ============================================================================
+# Python / OS
+# ============================================================================
 __pycache__/
 *.py[cod]
 *.pyo
@@ -57,3 +116,6 @@ Thumbs.db
 # Node
 node_modules/
 package-lock.json
+results/batch_jobs.json
+results/processed/metrics_b*.json
+results/processed/predictions_b*.jsonl

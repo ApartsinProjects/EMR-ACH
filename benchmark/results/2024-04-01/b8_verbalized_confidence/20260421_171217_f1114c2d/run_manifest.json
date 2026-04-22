@@ -1,0 +1,34 @@
+{
+  "run_id": "20260421_171217_f1114c2d",
+  "timestamp": "2026-04-21T17:12:17",
+  "method": "b8_verbalized_confidence",
+  "cutoff": "2024-04-01",
+  "model": "gpt-4o-mini-2024-07-18",
+  "temperature": 0.0,
+  "max_tokens": 512,
+  "git_sha": "f1114c2d",
+  "mode": "smoke-sync(N=2)",
+  "smoke_n": 2,
+  "sync": true,
+  "n_fds": 2,
+  "n_articles": 2,
+  "fd_ids_sample": [
+    "fb_sample001",
+    "gdc_sample002"
+  ],
+  "config_snapshot": {
+    "defaults": {
+      "model": "gpt-4o-mini-2024-07-18",
+      "temperature": 0.0,
+      "max_tokens": 512,
+      "batch_api": true,
+      "response_format": {
+        "type": "json_object"
+      }
+    },
+    "method": {
+      "class": "methods.b8_verbalized_confidence.B8VerbalizedConfidence",
+      "max_articles": 10
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "run_id": "20260422_075925_f1114c2d",
+  "timestamp": "2026-04-22T07:59:25",
+  "method": "b2_cot",
+  "cutoff": "2026-01-01",
+  "model": "gpt-4o-mini-2024-07-18",
+  "temperature": 0.0,
+  "max_tokens": 512,
+  "git_sha": "f1114c2d",
+  "mode": "batch",
+  "smoke_n": null,
+  "sync": false,
+  "n_fds": 535,
+  "n_articles": 2638,
+  "fd_ids_sample": [
+    "fb_RzsZN6SlUp",
+    "fb_0x2239eba5e0",
+    "fb_0xa320756f4f"
+  ],
+  "config_snapshot": {
+    "defaults": {
+      "model": "gpt-4o-mini-2024-07-18",
+      "temperature": 0.0,
+      "max_tokens": 512,
+      "batch_api": true,
+      "response_format": {
+        "type": "json_object"
+      }
+    },
+    "method": {
+      "class": "methods.b2_cot.B2CoT",
+      "short_name": "no_ctx_cot",
+      "display_name": "No-Context CoT",
+      "description": "1 CoT call, no articles."
+    }
+  }
+}

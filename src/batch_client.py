@@ -47,6 +47,10 @@ class BatchResult:
     input_tokens: int = 0
     output_tokens: int = 0
     error: str | None = None
+    # Free-form per-call metadata (latency, model used, seed, etc.) — used by
+    # the baselines runner's dump_smoke_debug() to preserve debug info without
+    # forcing every call site to know the fixed fields. Default: empty dict.
+    raw: dict = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:

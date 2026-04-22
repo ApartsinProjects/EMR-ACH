@@ -1,0 +1,12 @@
+{
+  "generated_at": "2026-04-21T17:58:34",
+  "model_cutoff": "2026-01-01",
+  "cutoff_buffer_days": 0,
+  "benchmarks_included": [
+    "forecastbench",
+    "gdelt_cameo",
+    "earnings"
+  ],
+  "git_sha": "f1114c2d08f1d71d97aa10f65ed47b2b53384795",
+  "python": "C:\\Python314\\python.exe"
+}

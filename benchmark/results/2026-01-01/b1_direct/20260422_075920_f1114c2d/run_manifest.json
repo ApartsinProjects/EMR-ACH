@@ -1,0 +1,37 @@
+{
+  "run_id": "20260422_075920_f1114c2d",
+  "timestamp": "2026-04-22T07:59:20",
+  "method": "b1_direct",
+  "cutoff": "2026-01-01",
+  "model": "gpt-4o-mini-2024-07-18",
+  "temperature": 0.0,
+  "max_tokens": 512,
+  "git_sha": "f1114c2d",
+  "mode": "batch",
+  "smoke_n": null,
+  "sync": false,
+  "n_fds": 535,
+  "n_articles": 2638,
+  "fd_ids_sample": [
+    "fb_RzsZN6SlUp",
+    "fb_0x2239eba5e0",
+    "fb_0xa320756f4f"
+  ],
+  "config_snapshot": {
+    "defaults": {
+      "model": "gpt-4o-mini-2024-07-18",
+      "temperature": 0.0,
+      "max_tokens": 512,
+      "batch_api": true,
+      "response_format": {
+        "type": "json_object"
+      }
+    },
+    "method": {
+      "class": "methods.b1_direct.B1Direct",
+      "short_name": "no_ctx",
+      "display_name": "No-Context Direct",
+      "description": "1 LLM call, no articles, direct hypothesis pick."
+    }
+  }
+}

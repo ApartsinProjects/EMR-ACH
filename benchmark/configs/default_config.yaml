@@ -1,0 +1,127 @@
+# Master benchmark construction config.
+# Consumed by scripts/build_benchmark.py.
+#
+# The single thing you MUST set per rebuild is `model_cutoff` (the LLM training
+# cutoff below which data would leak into the model's pretraining knowledge).
+# All other dates are automatically positioned relative to it with sensible
+# defaults, but can be overridden.
+#
+# Output lands in `{output_root}/{model_cutoff}/`, so parallel cutoff evaluations
+# co-exist safely in the same benchmark folder.
+
+# Evaluator LLM training cutoff (ISO YYYY-MM-DD). Required.
+# Examples:
+#   "2024-04-01" for GPT-4o / GPT-4o-mini
+#   "2024-12-01" for Claude Sonnet 3.5 / 3.6
+#   "2024-10-01" for Llama-3.1-405B
+#   "2025-04-01" for Claude Sonnet 4.6 and similar
+model_cutoff: "2026-01-01"
+
+# Extra days past cutoff that forecast_point MUST also exceed. Hedges against
+# post-cutoff continued-training / RLHF drift that vendors rarely disclose.
+# We recommend 90 days for a conservative default.
+cutoff_buffer_days: 0
+
+benchmarks:
+
+  forecastbench:
+    enabled: true
+    # ForecastBench is a static dataset from the upstream repo. We download,
+    # then filter. No further knobs here; all retrieval parameters live under
+    # `relevance.sources.{polymarket,metaculus,manifold,infer}` below.
+    prediction_market_sources: ["polymarket", "metaculus", "manifold", "infer"]
+
+  gdelt_cameo:
+    enabled: true
+    # GDELT KG context window. All dates in YYYYMM format.
+    # context_start..context_end = retrieval context window
+    # test_month                 = month the forecasting queries are drawn from
+    # all_end                    = download upper bound (gives a buffer)
+    context_start: "202601"
+    context_end:   "202602"
+    test_month:    "202603"
+    all_end:       "202603"
+    min_daily_mentions: 50     # source-reliability threshold (from GDELT methodology)
+    max_download_workers: 16
+
+  earnings:
+    enabled: true
+    # yfinance-based earnings-surprise pipeline.
+    start: "2026-01-01"
+    end:   "2026-04-21"
+    tickers: null              # null = default ticker list in scripts/earnings/build.py
+    threshold: 0.02            # |beat/miss| as fraction of consensus EPS
+
+# Quality-filter thresholds applied after unification.
+quality:
+  min_articles: 3
+  min_distinct_days: 2
+  min_chars: 1500
+  min_question_chars: 20
+
+# Relevance-scoring config (SBERT cross-match in common/compute_relevance.py).
+# Knobs per source: embedding_threshold (cosine-sim floor), keyword_overlap_min
+# (shared bigrams required), lookback_days (retrieval window before t*), top_k
+# (max articles per FD), recency_weight (blend vs. cosine sim), actor_match_required
+# (oracle pair-matching; true only for gdelt-kg).
+relevance:
+  embedding_model: "sentence-transformers/all-mpnet-base-v2"
+  batch_size: 32
+  max_text_chars: 500
+
+  sources:
+    polymarket:
+      embedding_threshold: 0.30
+      keyword_overlap_min:  0
+      lookback_days:       30
+      top_k:               10
+      recency_weight:      0.30
+      actor_match_required: false
+    metaculus:
+      embedding_threshold: 0.30
+      keyword_overlap_min:  0
+      lookback_days:       30
+      top_k:               10
+      recency_weight:      0.30
+      actor_match_required: false
+    manifold:
+      embedding_threshold: 0.30
+      keyword_overlap_min:  0
+      lookback_days:       30
+      top_k:               10
+      recency_weight:      0.30
+      actor_match_required: false
+    infer:
+      embedding_threshold: 0.30
+      keyword_overlap_min:  0
+      lookback_days:       30
+      top_k:               10
+      recency_weight:      0.30
+      actor_match_required: false
+    gdelt-kg:                       # used by gdelt_cameo benchmark
+      embedding_threshold: 0.0
+      keyword_overlap_min:  0
+      lookback_days:       90
+      top_k:               10
+      recency_weight:      0.30
+      actor_match_required: true    # must share Actor1/Actor2 with the FD
+    yfinance:                       # earnings source
+      embedding_threshold: 0.30
+      keyword_overlap_min:  0
+      lookback_days:       14
+      top_k:               10
+      recency_weight:      0.30
+      actor_match_required: false
+
+# Where final artifacts go. Orchestrator writes to {output_root}/{model_cutoff}/.
+output:
+  root: "data"
+
+# Secrets: names of environment variables to read API keys from.
+# Leave values blank in the committed config; populate your ~/.env or shell.
+# Currently no script in the release pipeline requires a token; this section
+# exists for forward compatibility (earnings news APIs, etc.).
+secrets:
+  openai_api_key:   "OPENAI_API_KEY"
+  newsapi_key:      "NEWSAPI_KEY"
+  metaculus_token:  "METACULUS_TOKEN"   # unused in release (API blocked)

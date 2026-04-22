@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/emr-ach/emr-ach/blob/main/docs/etd.schema.json",
+  "title": "EMR-ACH Event Timeline Dossier Fact",
+  "description": "Canonical JSON Schema for a single fact record in data/etd/facts.current. See docs/ETD_SPEC.md for full semantics.",
+  "type": "object",
+  "required": [
+    "id", "schema_version", "time", "fact", "article_ids",
+    "article_date", "extractor", "extract_run", "extracted_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id":             {"type":"string","pattern":"^f_[A-Za-z0-9]{8,24}$"},
+    "schema_version": {"type":"string","pattern":"^[0-9]+\\.[0-9]+$"},
+
+    "time": {
+      "type":"string",
+      "description":"YYYY-MM-DD, YYYY-MM, YYYY, or 'unknown'.",
+      "pattern":"^(unknown|[0-9]{4}(-[0-9]{2}(-[0-9]{2})?)?)$"
+    },
+    "time_end":       {"type":["string","null"],"pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+    "time_precision": {"type":"string","enum":["day","week","month","quarter","year","unknown"]},
+    "time_type":      {"type":"string","enum":["point","interval","ongoing","periodic"]},
+
+    "fact":     {"type":"string","minLength":1,"maxLength":400},
+    "language": {"type":["string","null"],"pattern":"^[a-z]{2}$"},
+    "translated_from": {"type":["string","null"],"pattern":"^[a-z]{2}$"},
+
+    "article_ids": {
+      "type":"array","minItems":1,"maxItems":20,
+      "items":{"type":"string"}
+    },
+    "primary_article_id": {"type":["string","null"]},
+    "article_date": {"type":"string","pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+    "source":       {"type":["string","null"]},
+
+    "entities": {
+      "type":"array","maxItems":50,
+      "items":{
+        "type":"object",
+        "required":["name","type"],
+        "additionalProperties":true,
+        "properties":{
+          "name":{"type":"string","minLength":1},
+          "type":{"type":"string","minLength":1},
+          "ticker":{"type":"string"},
+          "wikidata_id":{"type":"string"},
+          "role":{"type":"string"}
+        }
+      }
+    },
+    "location": {
+      "oneOf":[
+        {"type":"null"},
+        {"type":"string"},
+        {"type":"object","properties":{
+          "country":{"type":["string","null"]},
+          "region":{"type":["string","null"]},
+          "city":{"type":["string","null"]},
+          "lat":{"type":["number","null"]},
+          "lon":{"type":["number","null"]}
+        },"additionalProperties":false}
+      ]
+    },
+    "metrics": {
+      "type":"array","maxItems":20,
+      "items":{
+        "type":"object",
+        "required":["name","value","unit"],
+        "additionalProperties":false,
+        "properties":{
+          "name":{"type":"string"},
+          "value":{"type":"number"},
+          "unit":{"type":"string"},
+          "as_of":{"type":["string","null"],"pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"}
+        }
+      }
+    },
+
+    "kind":     {"type":["string","null"]},
+    "tags":     {"type":"array","maxItems":20,"items":{"type":"string"}},
+
+    "polarity":    {"type":"string","enum":["asserted","negated","hypothetical","reported"]},
+    "attribution": {"type":["string","null"]},
+
+    "extraction_confidence": {"type":["string","null"],"enum":["high","medium","low",null]},
+    "source_tier":           {"type":["string","null"],"enum":["primary","aggregator","blog","unknown",null]},
+
+    "canonical_id": {"type":["string","null"]},
+    "variant_ids":  {"type":"array","maxItems":20,"items":{"type":"string"}},
+    "derived_from": {"type":"array","items":{"type":"string"}},
+    "derivation":   {"type":["string","null"]},
+
+    "extractor":    {"type":"string","minLength":1},
+    "extract_run":  {"type":"string","minLength":1},
+    "extracted_at": {"type":"string","pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"}
+  },
+
+  "if":   {"properties":{"polarity":{"const":"reported"}}},
+  "then": {"required":["attribution"],"properties":{"attribution":{"type":"string","minLength":1}}}
+}
