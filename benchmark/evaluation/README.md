@@ -2,7 +2,9 @@
 
 Unified baselines battery for evaluating forecasting methods on the GDELT-CAMEO, ForecastBench, and Earnings Forecast-Document (FD) benchmarks. Every baseline is declared via YAML, built against a shared `Baseline` abstract class, and dispatched through the same OpenAI Batch API client so that cost, prompt length, and latency are directly comparable across methods.
 
-Each baseline consumes the unified FD schema (`question`, `background`, `hypothesis_set`, `hypothesis_definitions`, `article_ids`, `forecast_point`, `resolution_date`, `ground_truth`) and emits one prediction row per FD with a full probability distribution over the hypothesis set.
+**v2.1 framing (2026-04-22).** Every FD's primary target is the binary `["Comply", "Surprise"]` hypothesis set: does the outcome match the prior-state status-quo expectation (Comply) or break it (Surprise)? The legacy domain-specific multiclass label (Yes/No, Beat/Meet/Miss, Peace/Tension/Violence) is preserved on the FD as `x_multiclass_hypothesis_set` / `x_multiclass_ground_truth` for the multiclass ablation; pass `--multiclass` to evaluate against it instead.
+
+Each baseline consumes the unified FD schema (`question`, `background`, `hypothesis_set`, `hypothesis_definitions`, `article_ids`, `forecast_point`, `resolution_date`, `ground_truth`, `prior_state_30d`, `fd_type`) and emits **one prediction row per FD with a single picked hypothesis label** (no probabilities, no calibration). The shared user prompt injects a natural-language `prior_expectation_block` derived from the FD's prior-state annotation so the model is told what the status quo IS before being asked to pick Comply or Surprise.
 
 ## Folder layout
 
@@ -52,8 +54,8 @@ Smoke run (3 FDs, no API calls):
 cd benchmark
 python -m evaluation.baselines.runner \
     --method b4_self_consistency \
-    --fds data/2024-04-01/forecasts.jsonl \
-    --articles data/2024-04-01/articles.jsonl \
+    --fds data/2026-01-01/forecasts.jsonl \
+    --articles data/2026-01-01/articles.jsonl \
     --config configs/baselines.yaml \
     --dry-run --smoke 3
 ```
@@ -63,8 +65,8 @@ Production run (all FDs, Batch API):
 ```bash
 python -m evaluation.baselines.runner \
     --method b3_rag \
-    --fds data/2024-04-01/forecasts.jsonl \
-    --articles data/2024-04-01/articles.jsonl \
+    --fds data/2026-01-01/forecasts.jsonl \
+    --articles data/2026-01-01/articles.jsonl \
     --config configs/baselines.yaml
 ```
 
@@ -81,6 +83,8 @@ python -m evaluation.baselines.runner \
 | `--sync` | Use synchronous Chat Completions instead of the Batch API. Intended for small smoke runs only. |
 | `--limit N` | Limit number of FDs (overridden by `--smoke`). |
 | `--results-dir PATH` | Override base results directory. |
+| `--horizon DAYS` | Experiment-time forecast horizon. Filters each FD's `article_ids` to `publish_date < (resolution_date - horizon)`. Defaults to `fd.default_horizon_days` then 14. |
+| `--multiclass` | Opt-in ablation: evaluate against the legacy `x_multiclass_*` target instead of the primary binary Comply/Surprise target. |
 
 ## Output layout
 
@@ -90,11 +94,11 @@ Every run creates a fresh, timestamped directory. Existing results are never ove
 benchmark/results/{cutoff}/{method}/
 ├── latest.txt                          (pointer: most recent run_id)
 └── {run_id}/                           (run_id = YYYYMMDD_HHMMSS_{git_sha8})
-    ├── run_manifest.json               (timestamp, model, temp, git_sha, config snapshot, FD ids)
-    ├── predictions_{method}.jsonl      (one row per FD: prob_distribution, predicted_class, ground_truth)
-    ├── metrics_{method}.json           (accuracy, Brier, ECE, macro-F1, per-class F1)
+    ├── run_manifest.json               (timestamp, model, temp, git_sha, horizon, target, config snapshot, FD ids)
+    ├── predictions_{method}.jsonl      (one row per FD: predicted_class, ground_truth, fd_type, parse_failed)
+    ├── metrics_{method}.json           (accuracy, balanced accuracy, NBA, MCC, macro-F1, per-class P/R/F1, confusion matrix, by_fd_type breakdown, 95% bootstrap CIs)
     └── debug/                          (only in --smoke mode)
-        └── {fd_id}.json                (rendered prompt, raw response, parsed probs, latency)
+        └── {fd_id}.json                (rendered prompt, raw response, parsed pick, latency)
 ```
 
 ## Three-stage debug flow
@@ -110,7 +114,7 @@ Each stage produces its own versioned run directory, so you can diff runs across
 
 1. Add a file `evaluation/baselines/methods/b{N}_{short_name}.py`.
 2. Subclass `Baseline` (from `..base`). Implement `build_requests(fds, articles) -> list[BatchRequest]` and `parse_responses(results, fds) -> list[dict]`. For multi-round methods, set `multi_round = True` on the class and also implement `build_requests_round(r, fds, articles, prior)`.
-3. Use `self.make_request(custom_id=...)`, `self.render_user(fd, articles, ...)`, and `self.parse_probabilities(content, hs)` from the base class. Do not call the OpenAI SDK directly; everything goes through `BatchClient`.
+3. Use `self.make_request(custom_id=...)`, `self.render_user(fd, articles, ...)`, and `self.parse_pick(content, hs)` from the base class (every baseline returns one pick, never a probability vector). For multi-sample methods aggregate via `self.plurality(picks, hs)`. Do not call the OpenAI SDK directly; everything goes through `BatchClient`.
 4. Register the class in `benchmark/configs/baselines.yaml` under `baselines:` with `class: "methods.b{N}_{short_name}.B{N}ClassName"` plus any per-method config knobs.
 5. Document the method in `BASELINES.md` (citation, description, config params, compute cost, known limitations).
 

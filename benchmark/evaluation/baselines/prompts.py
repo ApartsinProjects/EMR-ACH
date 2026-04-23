@@ -2,10 +2,16 @@
 Shared prompt templates for all baselines.
 
 All templates accept the unified FD schema fields (hypothesis_set, hypothesis_definitions,
-question, background, articles_block) so the same prompts work for:
-  - ForecastBench binary Yes/No
-  - GDELT-CAMEO 3-class ordinal intensity (Peace / Tension / Violence)
-  - Earnings 3-class (Beat / Meet / Miss)
+question, background, articles_block). v2.1 framing (2026-04-22): every FD has the
+binary primary target ["Comply", "Surprise"] (the FD's outcome either matches or
+breaks the prior-state status-quo expectation). The legacy domain-specific multiclass
+target is preserved on the FD as `x_multiclass_*` for ablation but baselines read
+the primary target via `fd["hypothesis_set"]`.
+
+Every user prompt injects `_prior_expectation_block(fd)`, a natural-language
+status-quo sentence built from `prior_state_30d` + `fd_type`, so the model is
+explicitly told what the prior expectation is and asked whether the outcome will
+Comply with it or Surprise against it.
 
 Keep all prompt strings here; baseline method files import them.
 """
@@ -63,7 +69,12 @@ Return JSON only (no prose, no code fences):
 def _prior_expectation_block(fd: dict) -> str:
     """Render a natural-language 'status quo' sentence from the FD's prior-state
     annotation. Empty string when no annotation is available (keeps the prompt
-    unchanged for FDs that weren't annotated)."""
+    unchanged for FDs that weren't annotated).
+
+    Under v2.1 (Comply / Surprise primary target), this block is what tells the
+    model what the status-quo expectation IS, so it can decide whether the
+    outcome will Comply with it (status quo holds) or Surprise against it
+    (status quo breaks)."""
     prior = fd.get("prior_state_30d")
     if not prior:
         return ""
@@ -84,6 +95,12 @@ def _prior_expectation_block(fd: dict) -> str:
                f"was '{prior}' (confidence strength {stability:.2f}).")
     else:
         exp = f"The status-quo expectation for this FD is '{prior}'."
+    # Under the binary Comply/Surprise framing, append an explicit framing
+    # clause so the model reads the prior as the thing to confirm or contradict.
+    hs = fd.get("hypothesis_set") or []
+    if "Comply" in hs and "Surprise" in hs:
+        exp += (" Predict 'Comply' if the outcome will match this status-quo "
+                "expectation, or 'Surprise' if it will break it.")
     return f"\nPrior expectation (status quo): {exp}\n"
 
 

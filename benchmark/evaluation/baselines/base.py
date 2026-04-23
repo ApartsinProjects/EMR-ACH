@@ -271,6 +271,10 @@ class Baseline(ABC):
             "predicted_class": predicted_class,
             "ground_truth": fd.get("ground_truth"),
             "parse_failed": parse_failed,
+            # fd_type ('stability' / 'change' / 'unknown') is required for the
+            # per-fd_type breakdown in compute_metrics; the headline metric is
+            # reported on the 'change' subset under v2.1.
+            "fd_type": fd.get("fd_type"),
         }
         if extras:
             row.update(extras)

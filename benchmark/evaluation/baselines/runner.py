@@ -168,7 +168,7 @@ def _point_metrics(preds: list[dict], hs: list[str]) -> tuple[float, float, floa
     import math
     n = len(preds)
     if n == 0:
-        return 0.0, 0.0, 0.0, 0.0
+        return 0.0, 0.0, 0.0, 0.0, 0.0
     correct = sum(1 for p in preds if p["predicted_class"] == p["ground_truth"])
     acc = correct / n
     per_recall = []
@@ -466,6 +466,8 @@ def write_manifest(
     mode: str,
     smoke_n: int | None,
     sync: bool,
+    horizon_days: int | None = None,
+    multiclass: bool = False,
 ) -> None:
     manifest = {
         "run_id": run_id,
@@ -479,6 +481,8 @@ def write_manifest(
         "mode": mode,
         "smoke_n": smoke_n,
         "sync": sync,
+        "horizon_days": horizon_days,
+        "target": "x_multiclass" if multiclass else "primary_binary",
         "n_fds": len(fds),
         "n_articles": len(articles),
         "fd_ids_sample": [fd.get("id") for fd in fds[:3]],
@@ -673,6 +677,15 @@ def main() -> int:
     p.add_argument("--limit", type=int, default=None, help="Limit number of FDs (overridden by --smoke).")
     p.add_argument("--results-dir", default=None,
                    help="Override base results dir (default: benchmark/results/).")
+    p.add_argument("--multiclass", action="store_true",
+                   help=("Opt-in ablation: evaluate on the legacy domain-specific "
+                         "multiclass target (x_multiclass_hypothesis_set / "
+                         "x_multiclass_ground_truth) instead of the primary binary "
+                         "Comply/Surprise target. Off by default."))
+    p.add_argument("--horizon", type=int, default=None,
+                   help=("Experiment-time forecast horizon in days. Filters each "
+                         "FD's article_ids to publish_date < (resolution_date - horizon). "
+                         "Defaults to fd.default_horizon_days, then 14."))
     args = p.parse_args()
 
     # --- Resolve config ---
@@ -740,6 +753,24 @@ def main() -> int:
     fds = load_jsonl(fds_path, limit=effective_limit) if fds_path.exists() else []
     articles = load_articles_index(articles_path) if articles_path.exists() else {}
 
+    # --- Optional multiclass ablation: swap x_multiclass_* back to primary ---
+    if args.multiclass:
+        n_swapped = 0
+        for fd in fds:
+            if "x_multiclass_hypothesis_set" not in fd:
+                continue
+            fd["hypothesis_set"] = list(fd["x_multiclass_hypothesis_set"])
+            fd["hypothesis_definitions"] = dict(
+                fd.get("x_multiclass_hypothesis_definitions") or {}
+            )
+            fd["ground_truth"] = fd.get("x_multiclass_ground_truth")
+            fd["ground_truth_idx"] = fd.get("x_multiclass_ground_truth_idx")
+            n_swapped += 1
+        print(f"[multiclass] swapped {n_swapped} FDs back to legacy multiclass target")
+
+    # --- Apply experiment-time forecast horizon (filters article_ids by date) ---
+    fds = apply_experiment_horizon(fds, articles, horizon_days=args.horizon)
+
     # --- Run id + results dir (Rule 1) ---
     run_id = make_run_id()
     results_base = Path(args.results_dir) if args.results_dir else _BENCHMARK_ROOT / "results"
@@ -794,6 +825,8 @@ def main() -> int:
         mode=mode,
         smoke_n=smoke_n,
         sync=args.sync,
+        horizon_days=args.horizon,
+        multiclass=args.multiclass,
     )
     update_latest_pointer(method_dir, run_id)
 
