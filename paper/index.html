@@ -272,7 +272,7 @@ $$
 </table>
 
 <p>
-  Under this abstraction, no single benchmark is special to the method; each is one instantiation. Extending to a further benchmark (e.g., medical differentials) requires only a new row in Table 1 and a source-specific relevance + prior-state function.
+  Under this abstraction, no single benchmark is special to the method; each is one instantiation. Extending to a further benchmark (e.g., medical differentials) requires only a new row in Table 1 and a source-specific relevance + prior-state function. Appendix G.1-G.3 shows one concrete FD per benchmark, redacted from the v2.1 build.
 </p>
 
 <h3>3.4 Evaluation Metrics</h3>
@@ -448,7 +448,7 @@ $$
 </table>
 
 <p>
-  After mapping, every FD passes through the same downstream stages: unified-articles join, per-benchmark relevance routing (dense cosine for ForecastBench and GDELT-CAMEO, ticker-date relational join for Earnings), prior-state annotation (which performs the Comply/Surprise promotion described in &sect;3.2), quality filter, and per-stage drop-reason audit. The full pipeline is one CLI invocation; reproducing the benchmark for any cutoff requires only the YAML config and the upstream source credentials.
+  After mapping, every FD passes through the same downstream stages: unified-articles join, per-benchmark relevance routing (dense cosine for ForecastBench and GDELT-CAMEO, ticker-date relational join for Earnings), prior-state annotation (which performs the Comply/Surprise promotion described in &sect;3.2), quality filter, and per-stage drop-reason audit. Worked retrieval walkthroughs for both routing paths are in Appendix G.4-G.5. The full pipeline is one CLI invocation; reproducing the benchmark for any cutoff requires only the YAML config and the upstream source credentials.
 </p>
 
 <h4>5.1.1 Gold subset</h4>
@@ -470,21 +470,23 @@ $$
 
 <h3>5.2 Baselines (all pick-only)</h3>
 <p>
-  We re-implement every comparison method below under identical corpus, retrieval, and model conditions as EMR-ACH (<code>gpt-4o-mini</code>, temperature 0, same retrieved article set per FD). Every baseline returns a single hypothesis label; plurality voting is used wherever the baseline natively produces multiple candidates.
+  We re-implement every comparison method below under identical corpus, retrieval, and model conditions as EMR-ACH (<code>gpt-4o-mini</code>, temperature 0, same retrieved article set per FD). Every baseline returns a single hypothesis label; plurality voting is used wherever the baseline natively produces multiple candidates. Full per-method descriptions, citations, and known limitations are in Appendix F; the summary here is abbreviated.
 </p>
 <ul>
-  <li><strong>B1 (Direct Prompting):</strong> single call, question + hypotheses, no articles, pick one hypothesis.</li>
+  <li><strong>Majority-class reference</strong> (trivial): always predict the most frequent class. No LLM, no articles; it is the persistence-prior floor. Any system that fails to beat it on a given benchmark has no measurable selection skill on that benchmark. Replaces the deprecated B8 in every headline table.</li>
+  <li><strong>B1 (Direct Prompting)</strong> [Brown et al. 2020]: single call, question + hypotheses, no articles, pick one hypothesis.</li>
   <li><strong>B2 (Chain-of-Thought) [6]:</strong> B1 with CoT instructions; pick one hypothesis after reasoning.</li>
-  <li><strong>B3 (RAG):</strong> single call, question + hypotheses + top-10 articles; pick one hypothesis.</li>
+  <li><strong>B3 (RAG)</strong> [Lewis et al. 2020]: single call, question + hypotheses + top-10 articles; pick one hypothesis.</li>
   <li><strong>B4 (Self-Consistency) [9]:</strong> $k = 4$ CoT samples at $T = 0.7$, each returns a pick; final label is the plurality.</li>
-  <li><strong>B5 (Multi-Agent Debate) [10]:</strong> $n_{\text{agents}} = 2$, 1 round; a judge picks the winning hypothesis.</li>
-  <li><strong>B6 (Tree-of-Thoughts) [8]:</strong> branch-and-evaluate with breadth 2, depth 2; best-path hypothesis pick.</li>
+  <li><strong>B5 (Multi-Agent Debate) [10]:</strong> $n_{\text{agents}} = 2$, 1 round; plurality over final-round picks.</li>
+  <li><strong>B6 (Tree-of-Thoughts) [8]:</strong> branch-and-evaluate with breadth 2, depth 2; plurality over leaves.</li>
   <li><strong>B7 (Reflexion) [7-series]:</strong> initial pick, self-critique, revised pick; 2 iterations.</li>
-  <li><strong>B8 (<em>deprecated</em>):</strong> Verbalized Confidence no longer applies under pick-only evaluation; replaced by a trivial <em>majority-class</em> reference baseline reported in every results table.</li>
+  <li><strong>B8 (<em>deprecated</em>):</strong> Verbalized Confidence no longer applies under pick-only evaluation; replaced by the majority-class reference above.</li>
   <li><strong>B9 (LLM Ensemble) [20-series]:</strong> 3 configurations at $T \in \{0.0, 0.5, 1.0\}$, each returns a pick; final label is the plurality.</li>
+  <li><strong>B10 / B10b (planned):</strong> hybrid articles+facts and facts-only baselines that consume the ETD atomic-fact layer (Appendix E); marginal value reported in Table 6.</li>
 </ul>
 <p>
-  Baselines B4 to B9 target three orthogonal alternative hypotheses for where EMR-ACH's gains might come from: sampling-variance reduction (B4), generic multi-agent deliberation without a hypothesis matrix (B5, B6, B7), and model-ensembling (B9). If EMR-ACH still outperforms after controlling for all of these, the gain is attributable to the evidence-matrix structure specifically.
+  Baselines B4 to B9 target three orthogonal alternative hypotheses for where EMR-ACH's gains might come from: sampling-variance reduction (B4), generic multi-agent deliberation without a hypothesis matrix (B5, B6, B7), and model-ensembling (B9). If EMR-ACH still outperforms after controlling for all of these, the gain is attributable to the evidence-matrix structure specifically. See Appendix F for the controlled-comparison logic per baseline and Appendix G for worked FD examples drawn from the v2.1 build.
 </p>
 
 <h3>5.3 Ablation Variants</h3>
@@ -855,7 +857,7 @@ Return JSON only, no prose, no code fences:<br>
 
 <h2>Appendix E: Atomic-Fact Layer (ETD)</h2>
 <p>
-  The pipeline ships an optional <strong>Evidence-as-Time-stamped-Data (ETD)</strong> layer that decomposes raw articles into atomic, individually-verifiable facts. ETD is purely additive: the v2.1 baselines B1-B9 in &sect;5.2 still consume raw articles; the ETD layer is wired into the planned hybrid baseline B10 and the facts-only baseline B10b in <code>docs/V2_2_REFACTOR_BACKLOG.md</code> (Category F).
+  The pipeline ships an optional <strong>Evidence-as-Time-stamped-Data (ETD)</strong> layer that decomposes raw articles into atomic, individually-verifiable facts. ETD is purely additive: the v2.1 baselines B1-B9 in &sect;5.2 still consume raw articles; the ETD layer is wired into the planned hybrid baseline B10 and the facts-only baseline B10b in <code>docs/V2_2_REFACTOR_BACKLOG.md</code> (Category F). A worked production-filter verdict that illustrates how an extracted fact is dropped by the source-blocklist rule is in Appendix G.6.
 </p>
 
 <h3>E.1 Stage 1: Atomic-fact extraction (LLM)</h3>
