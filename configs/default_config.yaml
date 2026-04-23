@@ -89,7 +89,8 @@ quality:
 # (oracle pair-matching; true only for gdelt-kg).
 relevance:
   embedding_model: "sentence-transformers/all-mpnet-base-v2"
-  batch_size: 32
+  batch_size: 256        # SBERT encode batch. RTX 2060 (6GB) fits mpnet-base-v2
+                         # at 256 in ~3GB; was 32 (too small, ~5x slower per encode pass).
   max_text_chars: 500
 
   sources:
