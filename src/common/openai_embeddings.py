@@ -208,18 +208,30 @@ def encode_batch(texts: list[str], model: str = DEFAULT_MODEL,
                 time.sleep(poll_interval_sec)
 
         # Phase 3: validate + download + reassemble
+        # Accepts either b.status=="completed" OR b.status=="cancelled" with
+        # a populated output_file_id (partial recovery): download whatever
+        # succeeded, then pad the missing custom_ids via encode_sync. This
+        # unsticks rare long-tail batches where OpenAI stalls at 99%+ for
+        # tens of minutes; the sync-pad cost is a rounding error.
         parts = []
         for i, chunk_dir, chunk_texts, bid in chunks:
             b = done_batches.get(i)
             if b is None:
                 raise TimeoutError(f"chunk {i} batch {bid} did not complete in {timeout_sec}s")
-            if b.status != "completed":
+            salvage = (b.status == "cancelled" and b.output_file_id)
+            if b.status != "completed" and not salvage:
                 raise RuntimeError(f"chunk {i} batch {bid} ended in status {b.status}")
+
             out_path = chunk_dir / "output.jsonl"
-            out_bytes = client.files.content(b.output_file_id).read()
-            out_path.write_bytes(out_bytes)
+            # Reuse existing on-disk output.jsonl if already downloaded (e.g.
+            # pre-downloaded as a hedge); otherwise fetch.
+            if not out_path.exists() or out_path.stat().st_size == 0:
+                out_bytes = client.files.content(b.output_file_id).read()
+                out_path.write_bytes(out_bytes)
+
             n = len(chunk_texts)
             vecs = np.zeros((n, _expected_dim(model)), dtype=np.float32)
+            got: set[int] = set()
             for line in out_path.open(encoding="utf-8"):
                 r = json.loads(line)
                 cid = r.get("custom_id", "")
@@ -231,8 +243,23 @@ def encode_batch(texts: list[str], model: str = DEFAULT_MODEL,
                     continue
                 v = np.asarray(data[0]["embedding"], dtype=np.float32)
                 if v.shape[0] != vecs.shape[1]:
-                    vecs = np.zeros((n, v.shape[0]), dtype=np.float32)
+                    # Reshape vecs to the returned dim on first encounter.
+                    new = np.zeros((n, v.shape[0]), dtype=np.float32)
+                    for k in got:
+                        new[k] = vecs[k]
+                    vecs = new
                 vecs[idx] = v
+                got.add(idx)
+
+            missing = [k for k in range(n) if k not in got]
+            if missing:
+                print(f"[encode_batch]   chunk {i+1}/{n_chunks} SALVAGE: "
+                      f"got {len(got)}/{n}, running sync for {len(missing)} missing")
+                missing_texts = [chunk_texts[k] for k in missing]
+                missing_vecs = encode_sync(missing_texts, model=model, client=client)
+                for k, v in zip(missing, missing_vecs):
+                    vecs[k] = v.astype(np.float32, copy=False)
+
             parts.append(_normalize(vecs))
 
         return np.vstack(parts)
