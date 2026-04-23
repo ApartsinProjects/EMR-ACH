@@ -302,14 +302,19 @@ This contract is enforced at score time (mask-out) and re-enforced at publish ti
 
 ---
 
-## 6. Optional OpenAI Batch embeddings path
+## 6. OpenAI Batch embeddings path (v2.2 DEFAULT, no GPU)
 
-Some users have no GPU. v2.2 ships an optional drop-in: replace local SBERT with OpenAI's `text-embedding-3-small` via the Batch API.
+**Decision (2026-04-23 r4)**: v2.2 defaults the embedder to OpenAI Batch (`text-embedding-3-small`) for every embedding call across the pipeline. Local SBERT remains available behind `--embedder sbert` for offline / no-network use cases. This eliminates the GPU dependency from the entire build and from the ETD layer; the only remaining GPU consumer in the stack would be a user-side baseline that brings its own model.
 
-### 6.1 When to choose it
+Affected scripts (all default to `--embedder openai`):
+- [`scripts/compute_relevance.py`](../scripts/compute_relevance.py) (relevance scoring)
+- [`scripts/etd_dedup.py`](../scripts/etd_dedup.py) (Stage 2 fact clustering)
+- [`scripts/build_gdelt_doc_index.py`](../scripts/build_gdelt_doc_index.py) (NEW v2.2; encode of GDELT DOC titles + snippets for the bulk index)
 
-- **Choose Batch**: no local GPU; rebuild cadence is weekly or slower; OK with a 24-hour latency floor; cost-sensitive (Batch is half-price of sync).
-- **Choose local SBERT**: GPU available; rebuild cadence is hourly during a build cycle; need sub-minute encode for the per-row fingerprint delta loop.
+### 6.1 When to choose each backend
+
+- **Default (OpenAI Batch)**: works for everyone, no local hardware requirement; cost is in the noise (~$0.30 per full v2.1 rebuild, ~$0.04 for ETD Stage 2). Wall-clock dominated by OpenAI's batch queue (~10-30 min for our pool sizes; well under 1 h).
+- **Fallback (local SBERT)**: choose when you are offline, when you want sub-minute incremental cache hits during a tight iteration loop, or when running a confidential corpus that cannot leave the machine. Set `--embedder sbert` on every script that takes the flag; default config knob in `default_config.yaml: relevance.embedder: sbert` to flip globally.
 
 ### 6.2 Schema-compatible drop-in
 
@@ -317,7 +322,7 @@ Some users have no GPU. v2.2 ships an optional drop-in: replace local SBERT with
 
 1. **Native dim, no projection**: the shipped module writes the model's native dimension (1536 for `text-embedding-3-small`; 3072 for `-large`) without truncating to 768. The cache files therefore have a different shape than the SBERT cache.
 2. **Parallel caches, not a unified cache**: outputs go to `data/unified/article_embeddings_openai.npy` plus `forecast_embeddings_openai.npy` (separate `_openai` suffix); the SBERT cache at `article_embeddings.npy` is untouched. Two parallel caches coexist; switching backends does NOT invalidate the SBERT cache.
-3. **CLI wiring**: [`scripts/compute_relevance.py`](../scripts/compute_relevance.py) accepts `--embedder {sbert,openai}` and [`scripts/build_benchmark.py`](../scripts/build_benchmark.py) passes the flag through. Default is `sbert`.
+3. **CLI wiring**: [`scripts/compute_relevance.py`](../scripts/compute_relevance.py) accepts `--embedder {sbert,openai}` and [`scripts/build_benchmark.py`](../scripts/build_benchmark.py) passes the flag through. Default flipped to `openai` in r4 (was `sbert`). [`scripts/etd_dedup.py`](../scripts/etd_dedup.py) ships the same flag with `openai` default.
 
 The unified `embeddings_backend.py` API below remains the design target; backlog A6 wraps the shipped module behind it. Until A6 lands, the parallel-cache approach is the interim contract and should be documented as such in the cache-invalidation matrix (§7.2).
 
@@ -515,6 +520,7 @@ Explicitly not in this design:
 |---|---|---|
 | 2.2-draft | 2026-04-22 | Initial design doc. Documents GDELT DOC bulk pipeline, hybrid retrieval contract, encode-once-score-many cache, optional OpenAI Batch backend, resumability invariants, and refactor backlog. No code changes yet. |
 | 2.2-draft-r2 | 2026-04-23 | Post-audit update. Added §4a (per-benchmark retrieval routing; earnings ticker-date join shipped), §4b (reuse contract table), §6.2 shipped-state note (native dim, parallel cache), §7.2 OpenAI cache rows, §14 (post-publish orchestrator pointer). Reflects commits `9a27816`, `a373e89`, `ac0b031`, `9cbe9a1`, `e22395c`. Cross-references [`V2_2_END_TO_END_AUDIT.md`](V2_2_END_TO_END_AUDIT.md) Sections 4, 7, 8. |
+| 2.2-draft-r4 | 2026-04-23 | OpenAI default everywhere. §6 reframed: OpenAI Batch is the default embedder for `compute_relevance.py`, `etd_dedup.py`, and the upcoming `build_gdelt_doc_index.py`. Local SBERT moves to fallback (set `--embedder sbert` per call or `relevance.embedder: sbert` in config). GPU is no longer required for any v2.2 build path. |
 
 ---
 

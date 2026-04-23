@@ -53,7 +53,17 @@ INPUT = DATA / "facts.v1.jsonl"
 OUTPUT = DATA / "facts.v1_canonical.jsonl"
 META = DATA / "dedup_meta.json"
 
-EMBED_MODEL = "sentence-transformers/all-mpnet-base-v2"
+# v2.2 default: OpenAI embeddings (no GPU; matches compute_relevance.py).
+# Local SBERT path is preserved as a fallback via --embedder sbert.
+DEFAULT_EMBEDDER = "openai"
+EMBED_MODEL_SBERT = "sentence-transformers/all-mpnet-base-v2"
+EMBED_MODEL_OPENAI = "text-embedding-3-small"
+
+# Bootstrap sys.path so `from src.common.openai_embeddings import ...`
+# resolves when invoked directly. (Backlog item B4a generalizes this.)
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
 
 
 def _atomic_write(path: Path, render) -> None:
@@ -105,7 +115,15 @@ def main() -> int:
     ap.add_argument("--top-k", type=int, default=10,
                     help="Per-fact neighbor candidates to inspect.")
     ap.add_argument("--batch-size", type=int, default=64,
-                    help="SBERT encoding batch size.")
+                    help="Encoding batch size (used by SBERT path; ignored by OpenAI).")
+    ap.add_argument("--embedder", choices=["openai", "sbert"], default=DEFAULT_EMBEDDER,
+                    help="Embedding backend. 'openai' uses Batch API (~$0.04 for 78k facts, "
+                         "~10-15 min wall-clock, no local GPU); 'sbert' uses local "
+                         "mpnet-base-v2 on CUDA if available (~5-10 min on RTX 2060).")
+    ap.add_argument("--openai-model", default=EMBED_MODEL_OPENAI,
+                    help="OpenAI embedding model when --embedder=openai.")
+    ap.add_argument("--openai-mode", choices=["sync", "batch"], default="batch",
+                    help="OpenAI execution mode when --embedder=openai. Batch = 50%% cheaper.")
     ap.add_argument("--limit", type=int, default=None,
                     help="(Smoke) only process first N facts.")
     args = ap.parse_args()
@@ -124,20 +142,36 @@ def main() -> int:
     n = len(facts)
     print(f"[etd_dedup] loaded {n} facts")
 
-    # Lazy GPU import; keeps non-Stage-2 use of this module cheap.
-    from sentence_transformers import SentenceTransformer
     import numpy as np
-    import torch
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"[etd_dedup] encoding via {EMBED_MODEL} on {device}")
-    t0 = time.time()
-    model = SentenceTransformer(EMBED_MODEL, device=device)
     texts = [f.get("fact", "") for f in facts]
-    embs = model.encode(texts, batch_size=args.batch_size,
-                        normalize_embeddings=True, show_progress_bar=True)
-    embs = np.asarray(embs, dtype=np.float32)
-    print(f"[etd_dedup] encoded in {time.time() - t0:.1f}s")
+    t0 = time.time()
+    if args.embedder == "openai":
+        # OpenAI Batch API path: no GPU; ~$0.04 for 78k facts; ~10-15 min wall-clock.
+        # Reuses the same caching layer as compute_relevance.py via load_or_embed_openai.
+        from src.common.openai_embeddings import encode_batch, encode_sync
+        print(f"[etd_dedup] encoding via OpenAI {args.openai_model} (mode={args.openai_mode})")
+        encoder = encode_batch if args.openai_mode == "batch" else encode_sync
+        embs = encoder(texts, model=args.openai_model)
+        embs = np.asarray(embs, dtype=np.float32)
+    else:
+        # Legacy SBERT path: kept as a fallback (set --embedder sbert). Uses GPU
+        # via sentence-transformers if CUDA is available; FP16 for speed.
+        from sentence_transformers import SentenceTransformer
+        import torch
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"[etd_dedup] encoding via SBERT {EMBED_MODEL_SBERT} on {device}")
+        model = SentenceTransformer(EMBED_MODEL_SBERT, device=device)
+        if device == "cuda":
+            try:
+                model = model.half()
+            except Exception:
+                pass
+        embs = model.encode(texts, batch_size=args.batch_size,
+                            normalize_embeddings=True, show_progress_bar=True)
+        embs = np.asarray(embs, dtype=np.float32)
+    print(f"[etd_dedup] encoded {len(texts)} facts in {time.time() - t0:.1f}s "
+          f"-> shape {embs.shape}")
 
     # Brute-force kNN via single big matmul, sliced (n^2 memory at 69k * 768
     # floats = ~14 GB if dense; we slice in row-chunks). For 70k facts this
@@ -230,7 +264,8 @@ def main() -> int:
         "threshold": args.threshold,
         "window_days": args.window_days,
         "top_k": args.top_k,
-        "embed_model": EMBED_MODEL,
+        "embedder": args.embedder,
+        "embed_model": (args.openai_model if args.embedder == "openai" else EMBED_MODEL_SBERT),
         "cluster_size_histogram": dict(sorted(cluster_sizes.items())),
         "generated_at": datetime.utcnow().isoformat() + "Z",
     }
