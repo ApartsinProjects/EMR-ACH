@@ -143,20 +143,98 @@ def encode_batch(texts: list[str], model: str = DEFAULT_MODEL,
     work_dir = work_dir or Path("data/etd_openai_batches") / model
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    # Auto-chunk above the OpenAI per-batch cap
+    # Auto-chunk above the OpenAI per-batch cap. Submit all chunks up front
+    # (in parallel on OpenAI's side), then poll each to completion. This halves
+    # wall-clock for 2-chunk runs vs the earlier sequential implementation; the
+    # cost is unchanged because it is token-based, not request-based.
     if len(texts) > DEFAULT_BATCH_REQUESTS_CAP:
         cap = DEFAULT_BATCH_REQUESTS_CAP
         n_chunks = (len(texts) + cap - 1) // cap
-        print(f"[encode_batch] N={len(texts)} > {cap}; splitting into {n_chunks} sequential sub-batches")
-        parts = []
+        print(f"[encode_batch] N={len(texts)} > {cap}; splitting into {n_chunks} PARALLEL sub-batches")
+
+        # Phase 1: submit all (or resume-attach to) chunks; return immediately
+        # after each submission. Polling comes in phase 2.
+        chunks = []
         for i in range(n_chunks):
             chunk_texts = texts[i * cap : (i + 1) * cap]
             chunk_dir = work_dir / f"chunk_{i:02d}"
-            print(f"[encode_batch]   chunk {i+1}/{n_chunks}: N={len(chunk_texts)} -> {chunk_dir}")
-            part = encode_batch(chunk_texts, model=model, work_dir=chunk_dir,
-                                client=client, poll_interval_sec=poll_interval_sec,
-                                timeout_sec=timeout_sec)
-            parts.append(part)
+            chunk_dir.mkdir(parents=True, exist_ok=True)
+            state_path = chunk_dir / "state.json"
+            request_path = chunk_dir / "requests.jsonl"
+            state: dict = {}
+            if state_path.exists():
+                try:
+                    state = json.loads(state_path.read_text(encoding="utf-8"))
+                except json.JSONDecodeError:
+                    state = {}
+            if "batch_id" not in state:
+                n_req = _build_batch_jsonl(chunk_texts, model, request_path)
+                with open(request_path, "rb") as fp:
+                    file_obj = client.files.create(file=fp, purpose="batch")
+                batch = client.batches.create(
+                    input_file_id=file_obj.id,
+                    endpoint="/v1/embeddings",
+                    completion_window="24h",
+                    metadata={"workflow": "emr-ach-embeddings", "model": model,
+                              "chunk": str(i), "n_inputs": str(n_req)},
+                )
+                state.update({
+                    "batch_id":      batch.id,
+                    "input_file_id": file_obj.id,
+                    "model":         model,
+                    "n_inputs":      n_req,
+                    "submitted_at":  datetime.utcnow().isoformat() + "Z",
+                })
+                state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+                print(f"[encode_batch]   chunk {i+1}/{n_chunks} submitted: {batch.id}")
+            else:
+                print(f"[encode_batch]   chunk {i+1}/{n_chunks} resume: {state['batch_id']}")
+            chunks.append((i, chunk_dir, chunk_texts, state["batch_id"]))
+
+        # Phase 2: poll all chunks in a round-robin loop until each is terminal.
+        t0 = time.time()
+        done_batches: dict[int, any] = {}
+        while len(done_batches) < n_chunks and time.time() - t0 < timeout_sec:
+            for i, chunk_dir, chunk_texts, bid in chunks:
+                if i in done_batches:
+                    continue
+                b = client.batches.retrieve(bid)
+                if b.status in ("completed", "failed", "expired", "cancelled"):
+                    done_batches[i] = b
+                    rc = b.request_counts
+                    print(f"[encode_batch]   chunk {i+1}/{n_chunks} {b.status}: "
+                          f"total={rc.total} done={rc.completed} fail={rc.failed}")
+            if len(done_batches) < n_chunks:
+                time.sleep(poll_interval_sec)
+
+        # Phase 3: validate + download + reassemble
+        parts = []
+        for i, chunk_dir, chunk_texts, bid in chunks:
+            b = done_batches.get(i)
+            if b is None:
+                raise TimeoutError(f"chunk {i} batch {bid} did not complete in {timeout_sec}s")
+            if b.status != "completed":
+                raise RuntimeError(f"chunk {i} batch {bid} ended in status {b.status}")
+            out_path = chunk_dir / "output.jsonl"
+            out_bytes = client.files.content(b.output_file_id).read()
+            out_path.write_bytes(out_bytes)
+            n = len(chunk_texts)
+            vecs = np.zeros((n, _expected_dim(model)), dtype=np.float32)
+            for line in out_path.open(encoding="utf-8"):
+                r = json.loads(line)
+                cid = r.get("custom_id", "")
+                if not cid.startswith("emb_"):
+                    continue
+                idx = int(cid[len("emb_"):])
+                data = (r.get("response", {}).get("body", {}) or {}).get("data") or []
+                if not data:
+                    continue
+                v = np.asarray(data[0]["embedding"], dtype=np.float32)
+                if v.shape[0] != vecs.shape[1]:
+                    vecs = np.zeros((n, v.shape[0]), dtype=np.float32)
+                vecs[idx] = v
+            parts.append(_normalize(vecs))
+
         return np.vstack(parts)
 
     request_path = work_dir / "requests.jsonl"
