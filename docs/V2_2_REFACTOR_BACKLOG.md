@@ -413,12 +413,28 @@ Reports which stages would be reused on a fresh build given the current cache st
 Files: `scripts/etd_dedup.py`, `requirements.txt`, `tests/test_etd_dedup_knn.py` (new). Effort: S. Priority: P1. Deps: none.
 Replaces the single O(N^2) sliced matmul with a date-bucketed search: facts are grouped by `time` (YYYY-MM-DD), and for each day the candidate pool is restricted to the ±`window-days` neighbourhood. Per-bucket search uses FAISS `IndexFlatIP` when the `faiss-cpu` wheel is importable; falls back to numpy matmul otherwise. Exact recall within the window (which is the downstream union-find constraint, so no semantic loss). Legacy behaviour preserved as `--knn-mode brute`; bucketed path is the new default (`--knn-mode bucket`). For 78k facts × 365 days × window=3, bucket is ~50× fewer FLOPs; combined with MKL/SIMD from FAISS the 15-min brute step drops to well under a minute. Parity test `tests/test_etd_dedup_knn.py` verifies bucket-vs-brute pair equality under a wide window, window-constraint enforcement, no-date handling, pair deduplication, and threshold floor. 6/6 tests pass.
 
+## H. Gold-subset coverage bugs surfaced at v2.1 gold build
+
+Discovered 2026-04-23 while building `benchmark/data/2026-01-01-gold/`: the default gold filter (`min_articles>=8`, `min_distinct_days>=5`) dropped the entire 6,294-FD pool to 0 eligible FDs. Root cause was not gold-sampler tuning; it was two distinct data-pipeline bugs that broke every downstream consumer that reasons about article publish dates or dedup integrity. Both now have code-only fixes on master (no v2.1 rebuild) plus diagnostics to catch the same class of bug next time.
+
+### H1. GDELT-CAMEO `publish_date` = event_date, not article publish date **Status**: SHIPPED
+Files: `scripts/unify_articles.py`. Effort: S. Priority: P1. Deps: none.
+`load_gdelt_cameo()` wrote `publish_date = row["Date"][:10]` where `Date` is the CAMEO EVENT date, identical across every article referencing the same event. Net: every gdelt-cameo FD had all articles clustered on one date, destroying `distinct_days` diversity; all 5,975 gdelt FDs had `distinct_days=1`. Shipped fix: added `_publish_date_from_url()` helper that extracts `/YYYY/MM/DD/` slugs from URLs (covers the majority of major news domains: fortune, bbc, guardian, nyt, reuters, insidenova); falls back to the CAMEO event date when no slug is present. Correct publish dates restore gold eligibility and strengthen temporal ordering for relevance ranking. The v2.1 publish (`1dca08a`) ships with the pre-fix behaviour; v2.2 pipeline re-run will correct it.
+
+### H2. Dangling earnings article_ids in published pool **Status**: SHIPPED (diagnostic)
+Files: `scripts/build_benchmark.py` (`step_publish`). Effort: S. Priority: P1. Deps: none.
+1,049 / 1,299 earnings article_ids referenced by earnings FDs in `benchmark/data/2026-01-01/forecasts.jsonl` do NOT resolve in the same cutoff's `articles.jsonl`. Root cause is a pipeline ordering hazard: when an article fetcher (Finnhub / Google News / EDGAR enrichment) writes to `data/earnings/earnings_articles.jsonl` AFTER `unify_articles.py` built the pool but BEFORE `link_earnings_articles.py` ran, the linker stores `art_id(url)` values referring to URLs that were never added to the unified pool, and `step_publish` silently drops those references. Shipped: `step_publish` now computes `dangling = referenced_ids - pool_ids`, logs `WARN {n} dangling refs ({pct:.1f}%)`, and dumps the list to `meta/dangling_article_ids.txt` so the issue is visible at publish time. Real fix (v2.2): re-run `unify_articles.py` if any fetcher's mtime is newer than the unified pool's mtime, via the `reuse_check.py` (G6) cache-key machinery.
+
+### H3. GDELT-CAMEO hypothesis set skew: 74% majority class on Comply **Status**: OPEN
+Files: `scripts/build_gdelt_cameo_benchmark.py` (primary target derivation). Effort: M. Priority: P2. Deps: none.
+Current gdelt-cameo composition: 4,446/5,975 (74%) `ground_truth=Comply`, 1,205 Surprise, 324 legacy ternary. The Comply skew means most FDs resolve trivially (country pair with no active conflict -> "diplomatic interaction persists"), which compresses the score gap between methods and makes per-benchmark accuracy dominated by the stability class. v2.2 mitigation options: (a) rebalance target construction via smarter actor-pair sampling biased toward high-variance pairs (Iran-Israel, Russia-Ukraine, etc.), (b) expose `fd_type=change` filter as a first-class evaluation slice in the paper, (c) narrow the GDELT-CAMEO track to country pairs with a minimum Surprise rate >= 25% in historical data. Paper-side mitigation via gold subset's `fd_type` stratification is already in place but was masked by H1.
+
 ---
 
 ## Summary by priority
 
 - **P0 (blocks v2.2 launch)**: A1, A2, A3, A4, A6, A12, B1, B8, B15, C1, C2, C3, D1, D7, E11, E12, E13, **F5, G1, G2**.
-- **P1 (should land in v2.2)**: A5, A7, A8, A10, **A13**, B2, B3, B4, **B4a**, B5, B6, B7, C4, C5, C6, C7, C10, D2, D3, D4, D5, E4, F1, F4, **G3, G4, G5, G8**.
-- **P2 (nice-to-have or follow-on)**: A9, A11, B9, B10, B11, B12, B13, B14, C8, C9, D6, E1, E2, E3, E5, E6, E7, E8, E9, E10, E14, E15, E16, E17, E18, F2, F3, **G6**.
+- **P1 (should land in v2.2)**: A5, A7, A8, A10, **A13**, B2, B3, B4, **B4a**, B5, B6, B7, C4, C5, C6, C7, C10, D2, D3, D4, D5, E4, F1, F4, **G3, G4, G5, G8, H1, H2**.
+- **P2 (nice-to-have or follow-on)**: A9, A11, B9, B10, B11, B12, B13, B14, C8, C9, D6, E1, E2, E3, E5, E6, E7, E8, E9, E10, E14, E15, E16, E17, E18, F2, F3, **G6, H3**.
 
-Total: 20 P0, 27 P1, 28 P2 = 75 items.
+Total: 20 P0, 29 P1, 29 P2 = 78 items.

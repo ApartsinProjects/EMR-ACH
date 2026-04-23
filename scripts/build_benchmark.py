@@ -417,16 +417,43 @@ def step_publish(cutoff: str, output_root: Path, dry_run: bool) -> Path:
                 referenced.update(json.loads(line).get("article_ids", []))
     if src_arts.exists():
         kept = 0
+        pool_ids: set[str] = set()
         with open(out_arts, "w", encoding="utf-8") as out, \
              open(src_arts, encoding="utf-8") as src:
             for line in src:
                 try:
-                    if json.loads(line).get("id") in referenced:
+                    aid = json.loads(line).get("id")
+                    if aid is None:
+                        continue
+                    pool_ids.add(aid)
+                    if aid in referenced:
                         out.write(line)
                         kept += 1
                 except Exception:
                     continue
         log(f"articles.jsonl: {kept} articles (of {len(referenced)} referenced)")
+
+        # v2.2 [H2] dangling-ref integrity check. FDs referencing
+        # article_ids that are NOT present in the unified pool are
+        # published as silently-broken records; downstream (relevance,
+        # baselines, gold-subset filtering) treats them as zero-article
+        # FDs. Common cause: an article-fetcher (e.g. earnings Finnhub /
+        # Google News enrichment) wrote to its per-track JSONL AFTER
+        # unify_articles.py built the pool but BEFORE the FD linker ran,
+        # so the linker stored IDs that the pool never saw.
+        dangling = referenced - pool_ids
+        if dangling:
+            pct = 100.0 * len(dangling) / max(1, len(referenced))
+            log(f"articles.jsonl: WARN {len(dangling)} dangling refs "
+                f"({pct:.1f}%); re-run unify_articles.py + link_* after "
+                f"every fetcher that touches a per-track jsonl")
+            # Write a diagnostic for the step_publish meta/
+            dangling_path = dest / "meta" / "dangling_article_ids.txt"
+            dangling_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(dangling_path, "w", encoding="utf-8") as fh:
+                for aid in sorted(dangling):
+                    fh.write(aid + "\n")
+            log(f"articles.jsonl: dangling ids listed -> {dangling_path}")
     else:
         out_arts.write_text("", encoding="utf-8")
         log("articles.jsonl: empty (source pool missing)")

@@ -22,6 +22,7 @@ Usage:
 import csv
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 from urllib.parse import urlparse
@@ -61,6 +62,28 @@ GDELT_CAMEO_PLAIN = ROOT / "data" / "gdelt_cameo" / "data_news.csv"
 EARNINGS_NEWS = ROOT / "data" / "earnings" / "earnings_articles.jsonl"  # yfinance + GDELT per-ticker
 FB_NEWS       = ROOT / "data" / "forecastbench" / "forecastbench_articles.jsonl"
 GDC_NEWS      = ROOT / "data" / "gdelt_cameo" / "gdelt_cameo_news.jsonl"
+
+
+# v2.2 [H1] helper: extract publish date from a YYYY/MM/DD URL slug.
+# Matches fortune.com/2025/12/31/..., bbc.com/news/2026/01/02/..., etc.
+# Returns ISO YYYY-MM-DD or "" if no plausible date slug found.
+_URL_DATE_RE = re.compile(r"/(20\d{2})/(\d{1,2})/(\d{1,2})(?:/|\.|$)")
+
+
+def _publish_date_from_url(url: str) -> str:
+    if not url:
+        return ""
+    m = _URL_DATE_RE.search(url)
+    if not m:
+        return ""
+    y, mo, d = m.groups()
+    try:
+        mo_i, d_i = int(mo), int(d)
+        if not (1 <= mo_i <= 12 and 1 <= d_i <= 31):
+            return ""
+        return f"{y}-{mo_i:02d}-{d_i:02d}"
+    except ValueError:
+        return ""
 
 
 def art_id(url: str) -> str:
@@ -224,13 +247,22 @@ def load_gdelt_cameo() -> list[dict]:
             title = row.get("Title", "") or ""
             text = row.get("Text", "") or ""
             title_text = (title + "\n" + text).strip()
+            # v2.2 [H1] fix: The CAMEO CSV's `Date` column is the EVENT date,
+            # not the article's publish date — it is identical across every
+            # article referencing the same event, which destroys date
+            # diversity per FD (all articles for one event cluster on one
+            # day) and breaks the gold subset's `distinct_days` filter.
+            # Parse the URL for a YYYY/MM/DD slug first (covers the majority
+            # of major news domains: fortune, bbc, guardian, nyt, reuters,
+            # insidenova, etc.); fall back to the CAMEO event date.
+            publish_date = _publish_date_from_url(url) or (row.get("Date", "") or "")[:10]
             out.append({
                 "id": art_id(url),
                 "url": url,
                 "title": title,
                 "text": text,
                 "title_text": title_text,
-                "publish_date": (row.get("Date", "") or "")[:10],
+                "publish_date": publish_date,
                 "source_domain": domain_of(url),
                 "gdelt_themes": (row.get("Themes", "") or "").split(";") if row.get("Themes") else [],
                 "gdelt_tone": float(row.get("Tone", 0.0) or 0.0) if row.get("Tone") else 0.0,
