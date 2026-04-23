@@ -439,6 +439,16 @@ Design notes:
   - Publish v2.2 under `benchmark/data/{cutoff}-h14/` suffix to disambiguate.
   - Paper §5.1 should acknowledge v2.1 as "retrospective evaluation (horizon=0)" and v2.2 as "prospective evaluation (horizon=14)".
 
+### H7. EMR-ACH main-method port from MIRAI-locked SBERT+GPU to FD-aware OpenAI **Status**: OPEN (P0 paper-blocker)
+Files: `scripts/eval/emrach_on_gold.py`, `src/pipeline/indicators.py`, `src/pipeline/retrieval.py`, `src/pipeline/multi_agent.py`, `src/pipeline/aggregation.py` (new or existing), `tests/test_emrach_e2e.py` (new). Effort: M. Priority: P0. Deps: none (can run in parallel with H6 / CC-News fetch).
+Audit (`docs/EMRACH_IMPLEMENTATION_AUDIT.md`, 2026-04-23): Table 1 numbers cannot be produced today because the EMR-ACH entry point at `scripts/eval/emrach_on_gold.py` raises `NotImplementedError` in live mode, and the four claimed paper components are either MIRAI-locked or absent:
+  - **Contrastive indicators**: real code in `src/pipeline/indicators.py` but hardcoded to MIRAI 4-CAMEO schema (VC/MC/VK/MK); cannot consume FD `hypothesis_set`. **PARTIAL**.
+  - **Diagnostic weighting**: no analysis-matrix-A computation; only `primarily_supports` labels. **MISSING**.
+  - **Multi-agent debate**: single-round advocate-then-judge in `src/pipeline/multi_agent.py`; paper claims multi-round argumentation. MIRAI-locked. **PARTIAL**.
+  - **Hybrid retrieval (MMR + RRF + temporal decay)**: `src/pipeline/retrieval.py` has only Manual / Mock / Weaviate dense. No reranking, no time-decay. **MISSING**.
+No GPU is required for any of the above: SBERT embeddings are already replaced by OpenAI `text-embedding-3-small` elsewhere in the repo (relevance, ETD Stage-2). Port + generalisation estimate: 4-8 hours of dev work, no local model loads.
+Subtasks (each one-commit): (1) generalise `indicators.py` to accept arbitrary `hypothesis_set`; drop VC/MC/VK/MK constants. (2) implement MMR + RRF + temporal-decay rerank in `retrieval.py` on top of OpenAI embeddings. (3) implement diagnosticity-matrix-A in `aggregation.py`. (4) extend `multi_agent.py` to N-round argumentation with configurable stop condition. (5) wire `emrach_on_gold.py` live path to these modules; remove `NotImplementedError`. (6) end-to-end smoke test on 3-FD sample from the gold subset. (7) Batch API run over the full 81-FD gold + write Table 1 rows.
+
 ### H3. GDELT-CAMEO hypothesis set skew: 74% majority class on Comply **Status**: OPEN
 Files: `scripts/build_gdelt_cameo_benchmark.py` (primary target derivation). Effort: M. Priority: P2. Deps: none.
 Current gdelt-cameo composition: 4,446/5,975 (74%) `ground_truth=Comply`, 1,205 Surprise, 324 legacy ternary. The Comply skew means most FDs resolve trivially (country pair with no active conflict -> "diplomatic interaction persists"), which compresses the score gap between methods and makes per-benchmark accuracy dominated by the stability class. v2.2 mitigation options: (a) rebalance target construction via smarter actor-pair sampling biased toward high-variance pairs (Iran-Israel, Russia-Ukraine, etc.), (b) expose `fd_type=change` filter as a first-class evaluation slice in the paper, (c) narrow the GDELT-CAMEO track to country pairs with a minimum Surprise rate >= 25% in historical data. Paper-side mitigation via gold subset's `fd_type` stratification is already in place but was masked by H1.
@@ -448,7 +458,8 @@ Current gdelt-cameo composition: 4,446/5,975 (74%) `ground_truth=Comply`, 1,205 
 ## Summary by priority
 
 - **P0 (blocks v2.2 launch)**: A1, A2, A3, A4, A6, A12, B1, B8, B15, C1, C2, C3, D1, D7, E11, E12, E13, **F5, G1, G2**.
+- **P0 (blocks v2.2 launch)**: A1, A2, A3, A4, A6, A12, B1, B8, B15, C1, C2, C3, D1, D7, E11, E12, E13, **F5, G1, G2, H6, H7**.
 - **P1 (should land in v2.2)**: A5, A7, A8, A10, **A13**, B2, B3, B4, **B4a**, B5, B6, B7, C4, C5, C6, C7, C10, D2, D3, D4, D5, E4, F1, F4, **G3, G4, G5, G8, H1, H2**.
 - **P2 (nice-to-have or follow-on)**: A9, A11, B9, B10, B11, B12, B13, B14, C8, C9, D6, E1, E2, E3, E5, E6, E7, E8, E9, E10, E14, E15, E16, E17, E18, F2, F3, **G6, H3**.
 
-Total: 20 P0, 29 P1, 29 P2 = 78 items.
+Total: 22 P0, 29 P1, 29 P2 = 80 items.
