@@ -1,4 +1,36 @@
 """
+gdelt_retry_orphans.py
+======================
+
+What it does
+------------
+Retries GDELT URL fetches for forecasts whose Step-A articles all failed
+trafilatura body extraction (or never matched at all). It rewrites each
+orphan FD's question into keyword-friendly variants, re-queries the GDELT
+DOC API, and appends the recovered articles to the unified pool so they
+can re-enter SBERT relevance matching.
+
+When it was written
+-------------------
+Pre-v2.1, as a coverage-recovery patch on top of the per-FD GDELT DOC
+fetch path (`scripts/fetch_gdelt_cameo_news.py`).
+
+Deprecation plan
+----------------
+v2.2 will obviate this script once the bulk GDELT DOC pipeline lands:
+
+  * `scripts/fetch_gdelt_doc_archive.py` (A1)
+  * `scripts/build_gdelt_doc_index.py`   (A2)
+  * `scripts/query_gdelt_doc_index.py`   (A3)
+
+With the bulk archive in place there are no per-FD orphan fetches to
+recover from, because retrieval is served from a pre-fetched, fully
+body-extracted local index. See also backlog item E14 (consolidate the
+per-FD recovery scripts) in `docs/V2_2_REFACTOR_BACKLOG.md`. Until v2.2
+ships in production, this script remains live and unchanged.
+
+Original module description (kept for historical reference)
+-----------------------------------------------------------
 Step B of coverage recovery: LLM keyword rewriting + GDELT DOC API retry
 for forecasts that still have zero relevant articles after Step A.
 
