@@ -45,7 +45,13 @@ DATA = ROOT / "data"
 DEFAULT_IN = DATA / "unified" / "articles.jsonl"
 OUT_DIR = DATA / "unified" / "audit"
 
-REQUIRED_FIELDS = {"id", "url", "title", "text", "date", "source"}
+# Unified-article producer (scripts/unify_articles.py) emits `publish_date`
+# and `source_domain`. The earlier `date`/`source` names are accepted as
+# aliases so this audit also runs on the per-benchmark fetcher output
+# (which is what some external consumers see).
+_DATE_KEYS   = {"date", "publish_date"}
+_SOURCE_KEYS = {"source", "source_domain"}
+REQUIRED_FIELDS = {"id", "url", "title", "text"}
 LEN_BUCKETS = [200, 1000, 5000, 20000, 50000]
 
 
@@ -126,7 +132,12 @@ def main() -> int:
     seen_title = defaultdict(list)
 
     for a in arts:
-        missing = REQUIRED_FIELDS - set(a.keys())
+        keys = set(a.keys())
+        missing = REQUIRED_FIELDS - keys
+        if not (keys & _DATE_KEYS):
+            missing.add("date|publish_date")
+        if not (keys & _SOURCE_KEYS):
+            missing.add("source|source_domain")
         if missing:
             schema_fails.append((a.get("id"), f"missing: {sorted(missing)}"))
 
@@ -135,7 +146,7 @@ def main() -> int:
         ln = len(text)
         by_len[_bucket(ln, LEN_BUCKETS)] += 1
         by_lang[a.get("language", "und")] += 1
-        by_source[a.get("source", "(unknown)")] += 1
+        by_source[a.get("source") or a.get("source_domain") or "(unknown)"] += 1
         by_host[_host(a.get("url"))] += 1
         prov = a.get("provenance", "(unspecified)")
         if isinstance(prov, list):

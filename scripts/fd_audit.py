@@ -46,7 +46,7 @@ V21_BASE = {
     "ground_truth", "ground_truth_idx", "article_ids",
 }
 V21_PROMOTED = {
-    "prior_state", "fd_type",
+    "prior_state_30d", "fd_type",
     "x_multiclass_ground_truth", "x_multiclass_hypothesis_set",
 }
 COMPLY_SURPRISE = {"Comply", "Surprise"}
@@ -150,7 +150,7 @@ def main() -> int:
             change_consistency.append((fd.get("id"), gt))
 
         # Prior state
-        ps = fd.get("prior_state")
+        ps = fd.get("prior_state_30d")
         if not ps:
             no_prior_state[bench] += 1
         else:
