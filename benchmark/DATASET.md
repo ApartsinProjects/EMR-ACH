@@ -2,6 +2,16 @@
 
 Schema, data-file inventory, and guidance for reading the audit artifacts produced by `scripts/build_benchmark.py`.
 
+## 0. v2.2 layout note (in flight)
+
+The shipped v2.1 deliverable lives at `benchmark/data/{cutoff}/`. v2.2 introduces three additions that this document will fully describe once they reach release:
+
+- **CC-News evidence pipeline.** [`scripts/fetch_cc_news_archive.py`](../scripts/fetch_cc_news_archive.py) populates an offline news archive; [`scripts/build_cc_news_index.py`](../scripts/build_cc_news_index.py) and [`scripts/query_cc_news_index.py`](../scripts/query_cc_news_index.py) build and query the per-FD retrieval index. Pipeline overview: [`docs/CC_NEWS_PIPELINE.md`](../docs/CC_NEWS_PIPELINE.md).
+- **Gold subset.** A reviewer-curated slice of FDs lives at `benchmark/data/{cutoff}-gold/` (built by [`scripts/build_gold_subset.py`](../scripts/build_gold_subset.py)). It uses the same `forecasts.jsonl` / `articles.jsonl` schema described below; once the directory exists it will carry its own `README.md` describing curation criteria.
+- **ETD atomic-fact layer.** [`scripts/articles_to_facts.py`](../scripts/articles_to_facts.py) projects each article into atomic facts with extraction confidences; the v2.2 deliverable ships `facts.jsonl` alongside `articles.jsonl`. Per-fact schema: [`docs/etd.schema.json`](../docs/etd.schema.json) and [`docs/ETD_SPEC.md`](../docs/ETD_SPEC.md).
+
+The v2.1 schema below remains authoritative for the parent `{cutoff}/` directory.
+
 ## 1. Schema overview
 
 The benchmark ships in two linked schemas. All fields are produced by `scripts/common/unify_forecasts.py`, pruned by `scripts/common/compute_relevance.py`, filtered by `scripts/common/quality_filter.py`, and finally annotated by `scripts/annotate_prior_state.py` (which promotes the binary `Comply` vs `Surprise` target).
