@@ -52,6 +52,22 @@ data/etd/facts.errors.jsonl
 data/etd/extract_runs.jsonl
 data/etd/smoke_dump_*.json
 
+# ETD audit ephemerals (regeneratable; only per-cutoff post-publish summary
+# + facts_vs_articles markdown are committed as paper-referenced artefacts)
+data/etd/audit/*.log
+data/etd/audit/delta_*.jsonl
+data/etd/audit/*_diffs.jsonl
+data/etd/audit/empty_*.md
+data/etd/audit/empty_*.jsonl
+data/etd/audit/error_triage.md
+data/etd/audit/verifier_*.md
+data/etd/audit/verifier_*.jsonl
+data/etd/audit/recovery_meta.json
+data/etd/audit/audit_report.md
+
+# Local OpenAI Batch output / request caches (regeneratable, 100MB-1.5GB each)
+data/etd_openai_batches/
+
 # Pipeline STAGING (current live state — mutable between builds)
 data/unified/articles.jsonl
 data/unified/article_embeddings.npy

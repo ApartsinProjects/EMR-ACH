@@ -1,0 +1,27 @@
+{
+  "input": "E:\\Projects\\ACH\\data\\etd\\facts.v1_linked.jsonl",
+  "output": "E:\\Projects\\ACH\\data\\etd\\facts.v1_production_2026-01-01.jsonl",
+  "n_in": 78630,
+  "n_out": 50821,
+  "drops": {
+    "source_blocklist": 38,
+    "polarity": 9951,
+    "min_confidence": 1017,
+    "no_linked_fd": 16803
+  },
+  "filters": {
+    "min_confidence": "high",
+    "polarity": "asserted",
+    "no_future": true,
+    "max_date_skew_days": null,
+    "require_entities": false,
+    "min_cluster_size": null,
+    "require_linked_fd": true,
+    "benchmark": null,
+    "source_blocklist": [
+      "news.fjsen.com",
+      "world.people.com.cn"
+    ]
+  },
+  "generated_at": "2026-04-23T14:41:06.521654Z"
+}
