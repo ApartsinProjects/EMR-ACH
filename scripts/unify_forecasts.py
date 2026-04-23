@@ -45,7 +45,8 @@ from pathlib import Path
 # Fast JSONL I/O (orjson if available, stdlib json fallback) — see _fast_jsonl.py
 import sys as _sys
 from pathlib import Path as _Path
-_sys.path.insert(0, str(_Path(__file__).parent))
+_sys.path.insert(0, str(_Path(__file__).parent))           # for _fast_jsonl
+_sys.path.insert(0, str(_Path(__file__).parent.parent))    # for `src.*` imports
 from _fast_jsonl import loads as _j_loads, dumps as _j_dumps
 
 # The GDELT-CAMEO relation_query.csv has Docids fields that can exceed Python's default

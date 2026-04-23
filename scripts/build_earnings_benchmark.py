@@ -194,10 +194,22 @@ def main():
             print(f"  [{i}/{len(tickers)}] total FDs so far: {len(all_fds)}")
         time.sleep(args.sleep)
 
-    # write
+    # write (scrub NaN/Inf to None so the output is strict JSON; orjson and other
+    # downstream parsers reject the JS-style NaN literal that stdlib json emits)
+    import math as _math
+
+    def _scrub(v):
+        if isinstance(v, float):
+            return None if (_math.isnan(v) or _math.isinf(v)) else v
+        if isinstance(v, dict):
+            return {k: _scrub(x) for k, x in v.items()}
+        if isinstance(v, list):
+            return [_scrub(x) for x in v]
+        return v
+
     with open(OUT_FC, "w", encoding="utf-8") as f:
         for r in all_fds:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+            f.write(json.dumps(_scrub(r), ensure_ascii=False, allow_nan=False) + "\n")
 
     # stats
     from collections import Counter
