@@ -41,9 +41,17 @@ Wrap the URL loop in `concurrent.futures.ThreadPoolExecutor`; tune workers per t
 Files: new module. Effort: M. Priority: P0. Deps: none.
 Single `encode(texts, model, backend)` API for SBERT and OpenAI Batch; reusable from compute_relevance, build_gdelt_doc_index, and any future encoder caller. SBERT path mirrors current `compute_relevance.py:embed` behavior (batch=256, FP16). See §6.
 
-### A7. OpenAI Batch backend in `embeddings_backend.py` **Status**: DONE
-Files: same module as A6. Effort: M. Priority: P1. Deps: A6.
-50k-input chunked Batch jobs, async-with-resume; truncate-and-renormalize from 1536 to 768 dim for SBERT cache compatibility. See §6.2.
+### A7. OpenAI Batch backend in `embeddings_backend.py` **Status**: DONE (with A7a auto-chunk + A7b parallel polling)
+Files: shipped at [`src/common/openai_embeddings.py`](../src/common/openai_embeddings.py) (not the unified `embeddings_backend.py` originally specified; see §6.2 shipped-state note). Effort: M. Priority: P1. Deps: A6.
+Native 1536-dim (no 768 projection; parallel `_openai.npy` cache coexists with SBERT cache). Resume via per-chunk state.json. See §6.2.
+
+### A7a. Auto-chunk Batch jobs above the 50k-request cap **Status**: SHIPPED (commit `cb9ac70`)
+Files: [`src/common/openai_embeddings.py`](../src/common/openai_embeddings.py). Effort: S. Priority: P0. Deps: A7.
+OpenAI's Batch API enforces `maximum_requests <= 50,000` per batch. Today's ETD Stage 2 (78,462 facts) submitted as one batch and was rejected immediately; the fix splits inputs into sub-batches of <= 50k requests, writing each to `{work_dir}/chunk_NN/` with its own resume state.json. Cost unchanged (token-based). Without this, every pool larger than 50k items would require manual chunking by the caller.
+
+### A7b. Parallel chunk polling (was sequential) **Status**: SHIPPED (commit `e62be85`)
+Files: same module as A7a. Effort: S. Priority: P0. Deps: A7a.
+The initial A7a ship (commit `cb9ac70`) ran sub-batches sequentially: chunk_01 was not submitted until chunk_00 finished polling. For 2-chunk workloads this doubles wall-clock. The fix restructures `encode_batch` into three phases: (1) submit ALL chunks up front (or resume-attach to existing state), returning immediately after each submission; (2) round-robin poll every `poll_interval_sec` until every chunk reaches a terminal state; (3) validate + download + reassemble in chunk order. All chunks are `in_progress` on OpenAI concurrently. Cost unchanged. Wall-clock roughly halves for 2-chunk workloads; scales linearly in `n_chunks`.
 
 ### A8. FAISS shard-prune by date intersection **Status**: SHIPPED
 Files: `query_gdelt_doc_index.py`. Effort: S. Priority: P1. Deps: A3.
