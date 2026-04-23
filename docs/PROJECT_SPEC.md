@@ -41,6 +41,71 @@ Produce a **leakage-free, multi-domain LLM-forecasting benchmark** with an accom
 - **OpenAI embeddings helper** (`src/common/openai_embeddings.py`) with auto-chunk above 50k cap, parallel polling, salvage-on-cancel, and LOCAL-COMPLETED short-circuit for offline-synced chunks.
 - **Offline sync helper** (`scripts/offline_sync_chunk.py`) to bypass a stuck OpenAI Batch by sync-encoding all inputs locally.
 
+### 3.1.1 v2.2 build report (2026-04-23)
+
+Backlog H6 executed via reuse-first strategy (§6.1A). Built by
+`scripts/build_h14_from_v21.py` on top of the v2.1 publish.
+
+**h14 pool** (`benchmark/data/2026-01-01-h14/`, commit `16150fe`):
+- FD in:  134 forecastbench + 185 earnings (gdelt-cameo excluded per §10.1).
+- FD out: 40 forecastbench + 49 earnings = **89 FDs**.
+- Articles out: **291** (reused from the 28,945-article v2.1 pool).
+- Drop reasons: `empty_after_leakage:forecastbench=94`, `empty_after_leakage:earnings=136`.
+- Dangling article ids: **1004** (H2 residual; all earnings). Written to
+  `meta/dangling_article_ids.txt` for paper appendix.
+- Leakage assertion: **0 violations**. Every article passes
+  `publish_date <= forecast_point = resolution_date - 14d`.
+- Horizon assertion: **0 violations**. Every FD has
+  `(resolution_date - forecast_point).days == 14`.
+
+**ETD post-publish** (commit `5faa187`):
+- Stage-3 link: 445 facts linked (histogram: 0=78185, 1=435, 2=10) from
+  78,630 canonical Stage-2 facts across 291 h14 articles, 89 FDs.
+- Production filter: **403 facts** (drops: `no_linked_fd=67221`,
+  `polarity=9951`, `min_confidence=1017`, `source_blocklist=38`).
+- Audit: 4.07 facts/article, 99 articles with facts, 0 schema fails,
+  0 future-dated facts, 0 bad polarity.
+- Non-fatal: `etd_compare_facts_vs_articles.py` hit OpenAI 429 quota on
+  synchronous audit calls (compare reports preserved but empty).
+
+**Gold subset** (`benchmark/data/2026-01-01-h14-gold/`, commit `c6c7f07`):
+- Filters: `--min-articles 3 --min-distinct-days 2 --horizon-days 14
+  --min-avg-chars 300 --min-source-diversity 1 --keep-unknown`.
+- After filter cascade: **22 FDs** (21 fb-stability, 1 fb-change).
+  All earnings FDs drop out at `min_articles>=3` and `min_avg_chars>=300`
+  due to the H2 dangling-id shrinkage + v2.1's resolution-day article bias.
+- Articles: 98. ETD facts: 269 (from `facts.v1_production_2026-01-01-h14.jsonl`).
+- Two source patches landed under commit `c6c7f07`:
+  - `build_gold_subset.py` horizon filter: was `fp - horizon_days`; now
+    `rd - horizon_days`. Same value under v2.1 (`fp == rd`), fixes the
+    double-subtract bug under v2.2.
+  - `_load_etd_facts_for_articles` takes an optional cutoff and prefers
+    the cutoff-specific production facts file before legacy fallback.
+
+**Scope reduction vs task target**: task asked for 150-300 gold FDs; yield
+is 22 because (a) v2.1 article curation biased toward resolution-day
+articles (forecastbench p50 gap = 0 days), so the 14-day leakage shift
+drops 55-74% at pool stage; (b) H2 leaves 1049 earnings article_ids
+dangling; (c) `min_articles>=3` removes all earnings FDs from gold. Real
+fix is strategy 6.1B (CC-News rebuild with lookback=30d), blocked on H8.
+
+**Baselines eval prep** (commit `1a60320`): all 10 baselines (B1-B9 +
+b3b_rag_claims) dry-run clean against h14 gold; 472 total requests;
+cost estimate ~$0.11 at gpt-4o-mini Batch API rates. Plan in
+`docs/V2_2_EVAL_PLAN.md` with ready-to-fire commands.
+
+**Next session — ready to fire**:
+1. Pre-flight sync smoke: `python -m evaluation.baselines.runner --method b1
+   --fds data/2026-01-01-h14-gold/forecasts.jsonl --articles
+   data/2026-01-01-h14-gold/articles.jsonl --smoke 3 --sync`.
+2. Full B1-B9 Batch API submission per `docs/V2_2_EVAL_PLAN.md`.
+3. Regenerate paper Table 1, 4 cells for the v2.2 row.
+4. Tag `v2.2-data-ready`.
+
+**Open blockers**: OpenAI .env key hit 429 in B2's synchronous ETD
+compare; verify Batch API quota before firing (Batch quota is separate
+from sync quota).
+
 ### 3.2 Known bugs filed in `docs/V2_2_REFACTOR_BACKLOG.md`
 - **H1** GDELT-CAMEO `publish_date = event_date`. **FIXED in code** (URL-slug parser fallback to event date); v2.1 publish retrofitted (1,130 of 27,805 articles corrected; most gdelt URLs don't expose a date slug).
 - **H2** 1,049 of 1,299 earnings article_ids dangle in the published pool (unify-vs-link race). **DIAGNOSTIC SHIPPED** (step_publish now dumps a `dangling_article_ids.txt`); **HARD FIX DEFERRED** to v2.2 via reuse-check cache invalidation.
