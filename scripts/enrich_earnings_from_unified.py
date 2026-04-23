@@ -84,7 +84,8 @@ HIGH_COLLISION_TICKERS = {
     "TAP", "WHO", "WIN", "TRUE", "WELL", "BEST", "BIO", "HOT", "JOB",
     "LAW", "PLAY", "POOL", "POST", "WORK", "WALL", "WIRE", "STAY",
     # Proper nouns / common acronyms that collide with earnings tickers
-    "ICE", "FOX", "EOG", "RTX", "WAT",
+    "ICE", "FOX", "EOG", "RTX", "WAT", "CMS", "ED", "MET", "CPB", "CAT",
+    "CPT", "EL", "LEN", "NEE", "PEP", "PNR", "SYK", "TRV", "TXN", "WY",
 }
 # For tickers in this set, we require the company-name match path (or skip
 # pure-ticker hits) to avoid spurious matches like "the company A reported".
