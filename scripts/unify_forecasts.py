@@ -1,23 +1,36 @@
-"""
-Unify forecast records from ForecastBench and GDELT-CAMEO into a single schema.
+"""Unify forecast records from all three benchmarks into a single Forecast Dossier.
+
+This script is the **producer** of the canonical FD record. The contract is
+defined in [`docs/FORECAST_DOSSIER.md`](../docs/FORECAST_DOSSIER.md) (v2.1) and
+the per-field reference at [`benchmark/schema/forecast_dossier.md`].
+Downstream consumers (annotate_prior_state, compute_relevance, quality_filter,
+baselines runner) treat the FD as immutable schema; any new field added here
+must be reflected in both schema docs and the JSON Schema validator.
 
 Reads (read-only):
-  data/forecastbench_geopolitics.jsonl          - ForecastBench binary questions
-  data/gdelt_cameo/relation_query.csv            - GDELT-CAMEO 4-class queries (if exists)
-  data/unified/articles.jsonl                   - needed to build url->article_id map
+  data/forecastbench_geopolitics.jsonl   ForecastBench binary questions
+  data/gdelt_cameo/relation_query.csv    GDELT-CAMEO queries with EventBaseCode
+  data/earnings/earnings_forecasts.jsonl Earnings Beat/Meet/Miss FDs
+  data/unified/articles.jsonl            url -> article_id resolution
 
 Writes:
-  data/unified/forecasts.jsonl                  - unified forecast records
-  data/unified/forecasts_meta.json              - summary stats
+  data/unified/forecasts.jsonl           one FD per line
+  data/unified/forecasts_meta.json       summary stats by benchmark + source
 
-Forecast schema:
-  { id, benchmark, source, hypothesis_set, question, background, forecast_point,
-    resolution_date, ground_truth, ground_truth_idx, crowd_probability,
-    lookback_days, article_ids }
+Per-benchmark `forecast_horizon_days` is read from the env vars
+EMRACH_FB_HORIZON_DAYS / EMRACH_GDELT_HORIZON_DAYS / EMRACH_EARN_HORIZON_DAYS
+(set by scripts/build_benchmark.py from `default_config.yaml`). The horizon
+is emitted as `default_horizon_days` on each FD; the actual horizon filter
+runs at experiment time in the baselines runner.
 
-`article_ids` is populated from the existing question_id <-> article linkage in
-gdelt_articles.jsonl for ForecastBench and from oracle Docid for GDELT-CAMEO.
-compute_relevance.py can later refine or replace these.
+GDELT ground-truth labels go through `src/common/cameo_intensity.event_to_intensity()`
+to produce the Peace/Tension/Violence 3-class ordinal target. The lossy
+`quad_to_intensity_maybe()` fallback runs only if EventBaseCode is missing.
+
+Comply/Surprise binary promotion happens **downstream** in
+`scripts/annotate_prior_state.py`, NOT here. This script produces
+domain-multiclass FDs; the annotator stashes the multiclass label as
+`x_multiclass_*` and sets the primary `hypothesis_set` to ["Comply", "Surprise"].
 
 Usage:
   python scripts/unify_forecasts.py

@@ -1,8 +1,11 @@
 # EMR-ACH Benchmark Pipeline — Documentation
 
-**Version**: 2.0 (2026-04-22, "forecast from prior news" framing)
+**Version**: 2.1 (2026-04-23, Comply/Surprise unified primary target)
 **Entry point**: [`scripts/build_benchmark.py`](../scripts/build_benchmark.py)
 **Deliverable layout**: [`benchmark/data/{cutoff}/`](../benchmark/data/)
+**Canonical FD spec**: [`docs/FORECAST_DOSSIER.md`](FORECAST_DOSSIER.md)
+**Per-field FD reference**: [`benchmark/schema/forecast_dossier.md`](../benchmark/schema/forecast_dossier.md)
+**Per-field article reference**: [`benchmark/schema/article.md`](../benchmark/schema/article.md)
 
 ---
 
