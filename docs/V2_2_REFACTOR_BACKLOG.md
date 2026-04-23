@@ -81,6 +81,19 @@ Mirrors the v2.1 deprecation pattern used for `benchmark/build.py` (commit `d60a
 Files: new module; gradually migrate every `Path("data/...")` literal. Effort: M (incremental). Priority: P1. Deps: none.
 Eliminates the `data/unified/` versus `data/{benchmark}/` split-knowledge across scripts.
 
+### B4a. `bootstrap_sys_path()` in `src/common/paths.py`
+Files: same module as B4; one-line import call site in every script that imports `from src.*`. Effort: S. Priority: P1. Deps: B4.
+
+Today (2026-04-23) THREE separate scripts crashed in production with `ModuleNotFoundError: No module named 'src'` and got patched in three different commits with three near-identical 2-line `_sys.path.insert(0, str(_Path(__file__).parent.parent))` blocks:
+
+| Commit | Script | Bug |
+|---|---|---|
+| `060c9cf` | `scripts/unify_forecasts.py` | crashed mid-build, silently produced stale forecasts.jsonl |
+| `ac0b031` | `scripts/fetch_earnings_news.py` | crashed at re-fetch attempt, blocked Path C earnings recovery |
+| `a373e89` | `scripts/compute_relevance.py` | crashed when `--embedder=openai` triggered, blocked OpenAI rollout |
+
+Pattern: every script in `scripts/` that imports `from src.common.*` must add the boilerplate. New rule: every such script does `from src.common.paths import bootstrap_sys_path; bootstrap_sys_path()` as the first non-stdlib import, and `bootstrap_sys_path()` is the single owner of `_sys.path.insert(0, ROOT)`. Fail-fast assertion inside the helper if `src/` is not under `Path(__file__).resolve().parents[N]`. Cross-references B4 and supersedes E18.
+
 ### B5. Per-stage config slices and config-hash
 Files: new `src/common/config_slices.py`. Effort: S. Priority: P1. Deps: none.
 Each stage declares which config keys it depends on; resume logic hashes the slice. Enables Section 7.1 snapshot semantics.
@@ -155,7 +168,16 @@ Aggregator domains are filtered; legitimate editorial outlets are kept; ambiguou
 
 ### C7. ETD Stage-1 hallucination floor monitoring
 Files: `scripts/etd_audit.py` (already exists, 283 lines). Effort: S. Priority: P1. Deps: none.
-Current Phase C v3 production: 11.8% unsupported at high confidence. Add CI threshold: fail if a new ETD batch exceeds 13%.
+Add CI threshold: fail if a new ETD batch exceeds 13% unsupported facts at high confidence (the 13% is set 1.2 percentage points above the v3 production rate to absorb run-to-run variance, not as an aspirational target). Empirical baseline (commit `7237553` Phase A recovery + `231ef99` Phase C v3 prompt + `28f56fd` source blocklist):
+
+| Pipeline state | Sample N | Unsupported at high conf | Notes |
+|---|---:|---:|---|
+| v1 prompt (pre-Phase C) | 200 | 15.5% | mostly date-hallucination + topic-mismatch; baseline |
+| v2 prompt (verbatim quote, intermediate) | 50 | 12.0% | superseded |
+| v3 prompt (anchor table + verbatim quote) | 85 | 11.8% | production; v3 + `--strict-dates` + `--strict-quotes` post-validators |
+| v3 + post-publish source blocklist | 75 | ~0% | filtered subset; Chinese-gov syndication outlets removed (`news.fjsen.com`, `world.people.com.cn`) |
+
+The CI gate runs `scripts/etd_verify.py --n 200` on every new ETD batch and emits a single JSON: `{unsupported_high_conf: float, threshold: 0.13, passed: bool}`. Failed gate halts the post-publish orchestrator before Stage 2 dedup.
 
 ### C8. Per-row fingerprint collision test
 Files: new `tests/test_fingerprint_collisions.py`. Effort: S. Priority: P2. Deps: A6.
@@ -370,7 +392,7 @@ Reports which stages would be reused on a fresh build given the current cache st
 ## Summary by priority
 
 - **P0 (blocks v2.2 launch)**: A1, A2, A3, A4, A6, A12, B1, B8, B15, C1, C2, C3, D1, D7, E11, E12, E13, **F5, G1, G2**.
-- **P1 (should land in v2.2)**: A5, A7, A8, A10, **A13**, B2, B3, B4, B5, B6, B7, C4, C5, C6, C7, C10, D2, D3, D4, D5, E4, F1, F4, **G3, G4, G5**.
+- **P1 (should land in v2.2)**: A5, A7, A8, A10, **A13**, B2, B3, B4, **B4a**, B5, B6, B7, C4, C5, C6, C7, C10, D2, D3, D4, D5, E4, F1, F4, **G3, G4, G5**.
 - **P2 (nice-to-have or follow-on)**: A9, A11, B9, B10, B11, B12, B13, B14, C8, C9, D6, E1, E2, E3, E5, E6, E7, E8, E9, E10, E14, E15, E16, E17, E18, F2, F3, **G6**.
 
-Total: 20 P0, 26 P1, 28 P2 = 74 items.
+Total: 20 P0, 27 P1, 28 P2 = 75 items.
