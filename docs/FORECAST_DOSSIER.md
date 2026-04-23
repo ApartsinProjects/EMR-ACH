@@ -84,14 +84,25 @@ state cannot be computed (`fd_type = "unknown"`).
 
 ### 3.1 Date (temporal anchor)
 
-- `forecast_point` — a strict time boundary. No article with
-  `publish_date ≥ forecast_point` may participate in the FD's retrieval or
-  reasoning. Enforced at build time (`scripts/quality_filter.py`).
+- `forecast_point` — UTC timestamp at which the forecaster is simulated to
+  be asked the question. For v2.2,
+  `forecast_point = resolution_date - horizon_days`, default **14 days**
+  (overridable via `--horizon-days` on `scripts/build_benchmark.py` or
+  `temporal.horizon_days` in the config YAML). Every article in
+  `article_ids` satisfies `publish_date <= forecast_point`; this is a hard
+  leakage constraint, re-asserted locally at every fetcher
+  (`scripts/fetch_*_news.py`, `scripts/link_earnings_articles.py`) and
+  verified by `tests/test_v2_2_leakage.py`. v2.1 used
+  `forecast_point == resolution_date` (horizon 0, retrospective); v2.2
+  shifts it so the task is genuinely prospective.
 - `resolution_date` — when the ground-truth outcome becomes observable in
-  public news. Must satisfy `resolution_date > model_cutoff + buffer` to
-  prevent pretraining leakage of the answer.
-- `lookback_days` — the length of the evidence window. Unified to **90
-  days** across all benchmarks (v2.0).
+  public news. Preserved verbatim from the upstream source; must satisfy
+  `resolution_date > model_cutoff + buffer` to prevent pretraining leakage
+  of the answer.
+- `lookback_days` — the length of the evidence window, so fetchers query
+  `[forecast_point - lookback_days, forecast_point]`. Unified to **90
+  days** across all benchmarks (v2.2 default; overridable via
+  `--lookback-days` / `temporal.lookback_days`).
 
 ### 3.2 Question
 

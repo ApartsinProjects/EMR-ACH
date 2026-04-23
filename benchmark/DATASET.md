@@ -12,6 +12,29 @@ The shipped v2.1 deliverable lives at `benchmark/data/{cutoff}/`. v2.2 introduce
 
 The v2.1 schema below remains authoritative for the parent `{cutoff}/` directory.
 
+## 0.1 Horizon + lookback (v2.2)
+
+v2.2 introduces two configurable temporal parameters that redefine how `forecast_point` is computed and how the per-FD article pool is bounded:
+
+- `horizon_days` (default **14**): `forecast_point = resolution_date - horizon_days`. v2.1 used horizon 0 (retrospective); v2.2 shifts it so the forecaster is simulated to be asked the question N days before resolution.
+- `lookback_days` (default **90**): article fetchers query `[forecast_point - lookback_days, forecast_point]`. Every article in an FD's `article_ids` satisfies `publish_date <= forecast_point`; future-dated records from source APIs (GDELT DOC, Finnhub, Google News, NYT) are re-filtered locally and counted in the per-fetcher `__dropped_leakage__` bucket.
+
+Override from the CLI:
+
+```
+python scripts/build_benchmark.py --horizon-days 14 --lookback-days 90
+```
+
+Or from the config YAML (`configs/default_config.yaml` or `benchmark/configs/default_config.yaml`):
+
+```yaml
+temporal:
+  horizon_days: 14
+  lookback_days: 90
+```
+
+CLI values take precedence over YAML. Values are exported to subprocesses as `EMRACH_HORIZON_DAYS` / `EMRACH_LOOKBACK_DAYS`.
+
 ## 1. Schema overview
 
 The benchmark ships in two linked schemas. All fields are produced by `scripts/common/unify_forecasts.py`, pruned by `scripts/common/compute_relevance.py`, filtered by `scripts/common/quality_filter.py`, and finally annotated by `scripts/annotate_prior_state.py` (which promotes the binary `Comply` vs `Surprise` target).
