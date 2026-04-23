@@ -226,10 +226,15 @@ def parse_response(content: str, article: dict, extract_run: str, extractor: str
                            "error_detail":f"fact[{idx}] empty text"})
             continue
         time_val = (rf.get("time") or "").strip() or "unknown"
-        # Leakage guard: drop facts whose date is on/after article publish_date
-        if publish_date and re.match(r"^\d{4}-\d{2}-\d{2}$", time_val) and time_val >= publish_date:
+        # Leakage guard: reject only facts dated STRICTLY AFTER article publish_date.
+        # Same-day facts (time == publish_date) are the legitimate news of the day
+        # and must be kept; experiment-time leakage protection is handled separately
+        # by `apply_experiment_horizon()` in the baselines runner. The previous `>=`
+        # check rejected ~9.9k same-day facts and accounted for >90% of the audit
+        # error pool; see data/etd/audit/error_triage.md.
+        if publish_date and re.match(r"^\d{4}-\d{2}-\d{2}$", time_val) and time_val > publish_date:
             errors.append({"error_type":"validation_failed",
-                           "error_detail":f"fact[{idx}] time {time_val} >= publish_date {publish_date}"})
+                           "error_detail":f"fact[{idx}] time {time_val} > publish_date {publish_date}"})
             continue
 
         aid = article["id"]

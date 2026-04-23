@@ -1,0 +1,16 @@
+{
+  "errors_in": "E:\\Projects\\ACH\\data\\etd\\facts.errors.jsonl",
+  "facts_out": "E:\\Projects\\ACH\\data\\etd\\facts.v1.jsonl",
+  "errors_out": "E:\\Projects\\ACH\\data\\etd\\facts.errors.post_recovery.jsonl",
+  "n_error_rows_in": 10917,
+  "by_error_type": {
+    "validation_failed": 9887,
+    "json_parse": 298,
+    "schema_violation": 732
+  },
+  "n_recovered": 8647,
+  "n_still_invalid": 1030,
+  "n_skipped_dup_id": 0,
+  "n_skipped_no_raw": 0,
+  "generated_at": "2026-04-23T06:47:08.571506Z"
+}
