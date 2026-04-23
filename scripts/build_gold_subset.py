@@ -457,7 +457,7 @@ reproducibility.
      East Asia powers; ~70 country codes).
    - `earnings`: ticker must be in S&P 100.
 9. **Stratified sampling** to per-(benchmark, fd_type) quotas; default
-   targets: `{json.dumps(DEFAULT_TARGETS, default=str)}`. The actual
+   targets: `{json.dumps({f"{k[0]}::{k[1]}": v for k, v in DEFAULT_TARGETS.items()})}`. The actual
    sample sizes per stratum are in `meta/distribution.md`.
 
 ## Why these thresholds
@@ -1165,7 +1165,7 @@ def _distribution_doc(fds, articles, bench_counts, fdtype_counts, used_strata) -
                   f"- Distinct dates: {len(set(dates))}"]
 
     # Source diversity
-    by_source = Counter()
+    by_source = collections.Counter()
     for a in articles:
         by_source[a.get("source_domain", "(unknown)")] += 1
     lines += ["", "## Top 20 article source domains", "", "| domain | n |", "|---|---:|"]

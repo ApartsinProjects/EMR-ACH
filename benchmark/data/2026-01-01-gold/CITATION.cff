@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+title: EMR-ACH Gold Subset, cutoff 2026-01-01
+type: dataset
+authors:
+  - name: EMR-ACH Project
+abstract: >
+  A 81-FD curated subset of the EMR-ACH v2.1 forecasting benchmark
+  spanning geopolitics (GDELT-CAMEO), finance (S&P 100 earnings), and
+  prediction-market questions (ForecastBench), unified under a binary
+  Comply vs Surprise primary target with strict 14-day forecast horizon.
+keywords:
+  - forecasting
+  - benchmark
+  - LLM
+  - evidence retrieval
+  - GDELT
+  - earnings
+  - prediction markets
+date-released: 2026-04-23
+license: MIT
+identifiers:
+  - type: other
+    value: emr-ach-gold-2026-01-01
+    description: cutoff identifier
+  - type: other
+    value: git-ce013172c46c
+    description: source-tree commit
