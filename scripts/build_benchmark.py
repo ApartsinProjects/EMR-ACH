@@ -578,6 +578,15 @@ def main():
     ap.add_argument("--openai-mode", choices=["sync", "batch"], default="batch",
                     help="OpenAI execution mode when --embedder=openai. Batch is 50%% "
                          "cheaper but adds queue wait; sync is instant but rate-limited.")
+    ap.add_argument("--horizon-days", type=int, default=None,
+                    help="v2.2 forecast horizon in days. forecast_point = "
+                         "resolution_date - horizon_days. Default 14 (from "
+                         "config.temporal.horizon_days). Overrides YAML.")
+    ap.add_argument("--lookback-days", type=int, default=None,
+                    help="v2.2 article-pool lookback window in days. Fetchers "
+                         "query [forecast_point - lookback_days, forecast_point]. "
+                         "Default 90 (from config.temporal.lookback_days). "
+                         "Overrides YAML.")
     ap.add_argument("--dry-run", action="store_true",
                     help="Print commands without executing")
     ap.add_argument("--fresh", action="store_true",
@@ -670,9 +679,24 @@ def main():
     if "earnings" in chosen:
         step_earnings(cfg["benchmarks"]["earnings"], args.skip_raw, args.dry_run)
 
+    # v2.2 temporal block — horizon_days / lookback_days. CLI overrides YAML.
+    temporal_cfg = cfg.get("temporal", {}) or {}
+    horizon_days = int(args.horizon_days if args.horizon_days is not None
+                       else temporal_cfg.get("horizon_days", 14))
+    lookback_days = int(args.lookback_days if args.lookback_days is not None
+                        else temporal_cfg.get("lookback_days", 90))
+    log(f"[temporal] horizon_days={horizon_days}  lookback_days={lookback_days}")
+    # Export as env vars so downstream subprocesses (unify_forecasts.py,
+    # build_earnings_benchmark.py, fetch_*_news.py, link_earnings_articles.py)
+    # see the same values without needing individual CLI threading.
+    os.environ["EMRACH_HORIZON_DAYS"] = str(horizon_days)
+    os.environ["EMRACH_LOOKBACK_DAYS"] = str(lookback_days)
+
     # Build the per-benchmark forecast-horizon map from config, falling back
     # to `default_forecast_horizon_days` (14) when a specific benchmark omits it.
-    _default_h = int(cfg.get("default_forecast_horizon_days", 14))
+    # v2.2: the global temporal.horizon_days wins unless a benchmark explicitly
+    # overrides it via `benchmarks.<name>.forecast_horizon_days`.
+    _default_h = int(cfg.get("default_forecast_horizon_days", horizon_days))
     horizons = {
         b: int(cfg.get("benchmarks", {}).get(b, {}).get("forecast_horizon_days", _default_h))
         for b in ("forecastbench", "gdelt_cameo", "earnings")

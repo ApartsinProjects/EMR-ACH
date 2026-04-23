@@ -28,6 +28,18 @@ cutoff_buffer_days: 0
 # Per-benchmark override via benchmarks.<name>.forecast_horizon_days below.
 default_forecast_horizon_days: 14
 
+# v2.2 temporal block — unified horizon + lookback for the prospective
+# evaluation. v2.1 used forecast_point == resolution_date (horizon 0, de-facto
+# retrospective); v2.2 shifts forecast_point = resolution_date - horizon_days
+# so the system must forecast the outcome N days in advance. The article pool
+# query window is then [forecast_point - lookback_days, forecast_point] and
+# any article with publish_date > forecast_point is a leakage violation and
+# gets dropped. CLI flags --horizon-days / --lookback-days on
+# scripts/build_benchmark.py override these values.
+temporal:
+  horizon_days: 14
+  lookback_days: 90
+
 benchmarks:
 
   forecastbench:
