@@ -1,0 +1,25 @@
+# Gold subset of E:\Projects\ACH\benchmark\data\2026-01-01-h14
+# See selection_criteria.md and build_manifest.json for the gold-specific filters.
+
+# v2.2 reuse-first rebuild config (h14 leakage filter on v2.1 publish).
+# Built by scripts/build_h14_from_v21.py; NOT a build_benchmark.py driver.
+# Generated: 2026-04-23T19:55:10+00:00
+
+model_cutoff: '2026-01-01'
+cutoff_buffer_days: 0
+default_forecast_horizon_days: 14
+default_lookback_days: 30
+benchmarks:
+  forecastbench:
+    enabled: true
+    forecast_horizon_days: 14
+    lookback_days: 30
+  earnings:
+    enabled: true
+    forecast_horizon_days: 14
+    lookback_days: 30
+  gdelt_cameo:
+    enabled: false   # deferred per PROJECT_SPEC §10.1
+source:
+  parent_cutoff: '2026-01-01'
+  strategy: reuse-first (strategy A)

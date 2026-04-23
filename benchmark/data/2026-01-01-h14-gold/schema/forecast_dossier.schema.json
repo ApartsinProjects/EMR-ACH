@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "emr-ach-gold/forecast_dossier.schema.json",
+  "title": "Forecast Dossier (gold subset)",
+  "description": "v2.1-gold FD record. Self-contained: hypothesis_definitions are inline; downstream consumers do not need any external doc.",
+  "type": "object",
+  "required": [
+    "id",
+    "benchmark",
+    "source",
+    "hypothesis_set",
+    "hypothesis_definitions",
+    "question",
+    "forecast_point",
+    "resolution_date",
+    "ground_truth",
+    "ground_truth_idx",
+    "article_ids",
+    "fd_type"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "benchmark": {
+      "type": "string",
+      "enum": [
+        "forecastbench",
+        "gdelt-cameo",
+        "earnings"
+      ]
+    },
+    "source": {
+      "type": "string"
+    },
+    "hypothesis_set": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 2
+    },
+    "hypothesis_definitions": {
+      "type": "object"
+    },
+    "question": {
+      "type": "string"
+    },
+    "background": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "forecast_point": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "resolution_date": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "ground_truth": {
+      "type": "string"
+    },
+    "ground_truth_idx": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "article_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "fd_type": {
+      "type": "string",
+      "enum": [
+        "stability",
+        "change",
+        "unknown"
+      ]
+    },
+    "prior_state_30d": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "prior_state_stability": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "prior_state_n_events": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "x_multiclass_hypothesis_set": {
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "x_multiclass_hypothesis_definitions": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "x_multiclass_ground_truth": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "x_multiclass_ground_truth_idx": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "default_horizon_days": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "lookback_days": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "crowd_probability": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "metadata": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "_earnings_meta": {
+      "type": [
+        "object",
+        "null"
+      ]
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "generated_at": "2026-04-23T20:05:57.394679Z",
+  "kind": "gold_subset",
+  "parent_cutoff": "2026-01-01-h14",
+  "parent_forecasts_sha256": "4ba775ca70a2779794b9cef8fb2826beefb62f00c197bb4a9fcf03c065e5354b",
+  "git_sha": "5faa187760a14e5b7ecda5d7af2fdd21ffc72400",
+  "n_fds": 22,
+  "n_articles": 98,
+  "n_facts": 269,
+  "n_fds_by_benchmark": {
+    "forecastbench": 22
+  },
+  "n_fds_by_stratum": {
+    "forecastbench|stability": 21,
+    "forecastbench|change": 1
+  },
+  "selection_thresholds": {
+    "min_articles": 3,
+    "min_distinct_days": 2,
+    "horizon_days": 14,
+    "min_avg_chars": 300,
+    "min_source_diversity": 1,
+    "keep_unknown_fd_type": true,
+    "earnings_universe": "S&P 100",
+    "gdelt_cameo_actor_significance_filter": true,
+    "fb_topic_denylist_count": 8
+  },
+  "deliverable_layout": {
+    "forecasts.jsonl": "curated FD subset, one record per line",
+    "articles.jsonl": "only articles referenced by the subset, full text",
+    "facts.jsonl": "ETD atomic facts whose primary_article_id is in this subset's articles.jsonl (may be empty if Stage 1 ETD has not been run for the parent cutoff)",
+    "benchmark.yaml": "effective build config (drop-in reproducer)",
+    "build_manifest.json": "this file",
+    "checksums.sha256": "SHA256 for forecasts + articles + facts",
+    "selection_criteria.md": "human-readable selection rules",
+    "schema/": "self-contained JSON Schema for FD + article + ETD fact",
+    "examples/": "zero-dependency loader, validator, eval template",
+    "meta/": "per-FD audit + distribution stats + parent SHA"
+  }
+}

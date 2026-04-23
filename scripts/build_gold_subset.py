@@ -211,7 +211,12 @@ def _select_fd(fd: dict, articles_idx: dict, args) -> tuple[bool, str]:
         return (False, "no_dates")
     if (rd - fp).days < args.horizon_days:
         return (False, f"horizon_short({(rd - fp).days}<{args.horizon_days})")
-    horizon_cutoff = fp - timedelta(days=args.horizon_days)
+    # Leakage cutoff: articles must have publish_date <= (resolution_date - horizon_days).
+    # Under v2.1 benchmarks where forecast_point == resolution_date, this equals
+    # (fp - horizon_days) and preserves legacy behavior. Under v2.2 h14 benchmarks
+    # where forecast_point = resolution_date - horizon_days, it equals fp (no
+    # double-subtraction).
+    horizon_cutoff = rd - timedelta(days=args.horizon_days)
     horizon_violators = [a for a in art_recs
                          if (_parse_date(a.get("publish_date")) or fp) > horizon_cutoff]
     if horizon_violators:
@@ -292,16 +297,21 @@ DEFAULT_TARGETS = {
 }
 
 
-def _load_etd_facts_for_articles(article_ids_set: set[str]) -> list[dict]:
+def _load_etd_facts_for_articles(article_ids_set: set[str], cutoff: str | None = None) -> list[dict]:
     """Load ETD facts filtered to those whose primary_article_id is in the
-    gold-articles set. Prefers the Stage-3 linked output, then Stage-2
-    canonical, then Stage-1 raw. Returns [] if nothing is available."""
-    candidates = [
-        ROOT / "data" / "etd" / "facts.v1_production_2026-01-01.jsonl",  # post-Stage-3 + filter
+    gold-articles set. Prefers the cutoff-specific production file (post-
+    Stage-3 + filter), then the legacy 2026-01-01 production, then Stage-3
+    linked, then Stage-2 canonical, then Stage-1 raw. Returns [] if nothing
+    is available."""
+    candidates: list[Path] = []
+    if cutoff:
+        candidates.append(ROOT / "data" / "etd" / f"facts.v1_production_{cutoff}.jsonl")
+    candidates.extend([
+        ROOT / "data" / "etd" / "facts.v1_production_2026-01-01.jsonl",  # legacy fallback
         ROOT / "data" / "etd" / "facts.v1_linked.jsonl",                  # Stage-3 link
         ROOT / "data" / "etd" / "facts.v1_canonical.jsonl",               # Stage-2 dedup
         ROOT / "data" / "etd" / "facts.v1.jsonl",                         # Stage-1 raw
-    ]
+    ])
     src = next((p for p in candidates if p.exists()), None)
     if src is None:
         print("[gold] no ETD facts file found; gold facts.jsonl will be empty")
@@ -331,7 +341,7 @@ def _write_self_contained(out_dir: Path, fds: list[dict], articles: list[dict],
     _atomic_write_jsonl(out_dir / "forecasts.jsonl", fds)
     _atomic_write_jsonl(out_dir / "articles.jsonl", articles)
     article_ids_set = {a["id"] for a in articles if "id" in a}
-    facts = _load_etd_facts_for_articles(article_ids_set)
+    facts = _load_etd_facts_for_articles(article_ids_set, cutoff=args.cutoff)
     _atomic_write_jsonl(out_dir / "facts.jsonl", facts)
     print(f"[gold] facts.jsonl: {len(facts)} ETD facts linked to {len(article_ids_set)} gold articles")
 
