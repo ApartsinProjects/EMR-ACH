@@ -35,7 +35,7 @@ import re
 import sys
 from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -59,18 +59,106 @@ ERRORS_FILE = ETD_DIR / "facts.errors.jsonl"
 RUNS_FILE   = ETD_DIR / "extract_runs.jsonl"
 
 ARTICLES_FILE = DATA / "unified" / "articles.jsonl"
-PROMPT_PATH   = ROOT / "docs" / "prompts" / "etd_extraction_v1.txt"
+PROMPT_DIR    = ROOT / "docs" / "prompts"
+PROMPT_PATH   = PROMPT_DIR / "etd_extraction_v1.txt"   # default; --prompt overrides
 SCHEMA_PATH   = ROOT / "docs" / "etd.schema.json"
 
 SCHEMA_VERSION = "1.0"
+
+# Anchor-date offsets (days) injected into v3 prompts. Each row gives the
+# delta from publish_date and the natural-language phrase the LLM should
+# look up rather than computing arithmetic itself. Order matters: the
+# table is rendered in this order so the LLM scans top-down.
+ANCHOR_DAYS = [
+    (0,    "today / this morning / this evening"),
+    (1,    "yesterday"),
+    (2,    "two days ago"),
+    (3,    "three days ago"),
+    (7,    "last week / a week ago"),
+    (14,   "two weeks ago"),
+    (30,   "last month / a month ago"),
+    (60,   "two months ago"),
+    (90,   "last quarter / three months ago"),
+    (180,  "six months ago / half a year ago"),
+    (365,  "last year / a year ago"),
+]
+
+
+def _build_anchor_table(publish_date: str) -> str:
+    """Render an anchor-date lookup table for the v3 prompt. Returns a
+    one-row-per-anchor block the LLM can pattern-match against relative
+    phrases in the article body. If publish_date isn't a parseable
+    YYYY-MM-DD, returns a stub explaining the table is unavailable."""
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", publish_date or ""):
+        return "(anchor table unavailable: publish_date is not a parseable date)"
+    pd = datetime.strptime(publish_date, "%Y-%m-%d")
+    rows = []
+    for delta, phrase in ANCHOR_DAYS:
+        d = pd - timedelta(days=delta)
+        rows.append(f"  publish_date - {delta:>3d} days : {d.strftime('%Y-%m-%d')}  ({phrase})")
+    return "\n".join(rows)
+
+
+def _date_is_canonical(time_val: str, publish_date: str) -> bool:
+    """True iff `time_val` (YYYY-MM-DD) is one of the anchor offsets from
+    publish_date with +/-1 day tolerance. Used by the post-extraction
+    validator to reject invented specific dates."""
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", time_val):
+        return True   # not a day-precision date; downstream precision rules
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", publish_date or ""):
+        return True   # cannot verify
+    try:
+        t = datetime.strptime(time_val, "%Y-%m-%d")
+        pd = datetime.strptime(publish_date, "%Y-%m-%d")
+    except ValueError:
+        return True
+    delta = (pd - t).days
+    if delta < 0:
+        return False  # future-dated: separate validator catches this
+    if delta > 365 * 3:
+        return False  # >3 years pre: probably hallucinated
+    for offset, _ in ANCHOR_DAYS:
+        if abs(delta - offset) <= 1:
+            return True
+    return False
+
+
+def _date_appears_verbatim(time_val: str, body: str) -> bool:
+    """True iff `time_val` (YYYY-MM-DD) or its natural-language equivalent
+    (e.g. 'March 1, 2026', 'March 2026') appears in the body. Lets the
+    post-extraction validator accept dates the article explicitly
+    references even if they fall outside the anchor table."""
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", time_val):
+        return True
+    if not body:
+        return False
+    if time_val in body:
+        return True
+    try:
+        d = datetime.strptime(time_val, "%Y-%m-%d")
+    except ValueError:
+        return True
+    months = ["January","February","March","April","May","June",
+              "July","August","September","October","November","December"]
+    m = months[d.month - 1]
+    candidates = [
+        f"{m} {d.day}, {d.year}",
+        f"{m} {d.day} {d.year}",
+        f"{d.day} {m} {d.year}",
+        f"{d.year}-{d.month:02d}-{d.day:02d}",
+        f"{d.month:02d}/{d.day:02d}/{d.year}",
+        f"{d.day}/{d.month:02d}/{d.year}",
+    ]
+    return any(c in body for c in candidates)
 
 
 # ---------------------------------------------------------------------------
 # IO helpers
 # ---------------------------------------------------------------------------
 
-def load_prompt_template() -> tuple[str, str]:
-    text = PROMPT_PATH.read_text(encoding="utf-8")
+def load_prompt_template(prompt_path: Path | None = None) -> tuple[str, str]:
+    p = Path(prompt_path) if prompt_path else PROMPT_PATH
+    text = p.read_text(encoding="utf-8")
     sha = hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
     return text, sha
 
@@ -153,13 +241,15 @@ def build_user_prompt(template: str, article: dict, max_body_chars: int = 4000) 
         body = body[:max_body_chars] + " [truncated]"
     # Prompt file contains literal JSON braces; use str.replace (not .format) so
     # those don't get parsed as placeholders.
+    publish_date = article.get("publish_date", "") or "unknown"
     slots = {
         "{article_id}":   article.get("id", ""),
-        "{publish_date}": article.get("publish_date", "") or "unknown",
+        "{publish_date}": publish_date,
         "{source}":       article.get("source_domain", "") or "unknown",
         "{language}":     article.get("language") or "en",
         "{title}":        (article.get("title") or "").strip() or "(no title)",
         "{body}":         body or "(no body)",
+        "{anchor_table}": _build_anchor_table(publish_date),  # v3 only; harmless on v1/v2
     }
     out = template
     for k, v in slots.items():
@@ -198,7 +288,7 @@ def _fact_id(normalized_fact: str, primary_article_id: str, extract_run: str) ->
 
 
 def parse_response(content: str, article: dict, extract_run: str, extractor: str,
-                   validator=None) -> tuple[list[dict], list[dict]]:
+                   validator=None, strict_dates: bool = False) -> tuple[list[dict], list[dict]]:
     """Returns (valid_facts, validation_errors)."""
     if not content:
         return [], [{"error_type":"empty_response","error_detail":"LLM returned empty content"}]
@@ -236,6 +326,19 @@ def parse_response(content: str, article: dict, extract_run: str, extractor: str
             errors.append({"error_type":"validation_failed",
                            "error_detail":f"fact[{idx}] time {time_val} > publish_date {publish_date}"})
             continue
+        # Strategy-2 date validator (opt-in): when --strict-dates is set,
+        # reject day-precision dates that are NEITHER on the anchor-offset
+        # grid NOR a verbatim substring of the article body. Catches the
+        # "model invented March 8 from a Monday-only article" failure mode.
+        if strict_dates and publish_date and re.match(r"^\d{4}-\d{2}-\d{2}$", time_val):
+            body_text = article.get("text") or ""
+            canonical = _date_is_canonical(time_val, publish_date)
+            verbatim = _date_appears_verbatim(time_val, body_text)
+            if not canonical and not verbatim:
+                errors.append({"error_type": "validation_failed",
+                               "error_detail": f"fact[{idx}] time {time_val} not on anchor grid "
+                                               f"and not verbatim in body (publish_date={publish_date})"})
+                continue
 
         aid = article["id"]
         rec = {
@@ -312,10 +415,19 @@ def main():
                     help="If >0, split requests into concurrent sub-batches of this size via "
                          "src.common.multibatch.run_multibatch (5000 is a good default for >10k runs; "
                          "completes in ~1-3h instead of 4-12h for one giant batch).")
+    ap.add_argument("--prompt", default=None,
+                    help="Path to extraction prompt template. Default: docs/prompts/etd_extraction_v1.txt. "
+                         "Use docs/prompts/etd_extraction_v3.txt for the anchor-table + verbatim-grounding variant.")
+    ap.add_argument("--strict-dates", action="store_true",
+                    help="Post-extraction validator: reject day-precision dates that are NOT on the "
+                         "anchor-offset grid AND NOT verbatim in the article body. Recommended with --prompt v3.")
+    ap.add_argument("--only-articles", default=None,
+                    help="Path to a JSONL file of article records (or {id} dicts) to restrict the "
+                         "extraction set to. Used for the post-publish delta extract.")
     args = ap.parse_args()
 
     extract_run = build_run_id(args.run_id)
-    template, prompt_sha = load_prompt_template()
+    template, prompt_sha = load_prompt_template(Path(args.prompt) if args.prompt else None)
     validator = load_schema()
     if validator is None:
         print("[warn] jsonschema not installed; skipping schema validation. `pip install jsonschema` to enable.")
@@ -323,6 +435,24 @@ def main():
     # Load articles
     articles = read_articles(limit=None)
     print(f"[articles] {len(articles)} total articles in {ARTICLES_FILE.relative_to(ROOT)}")
+
+    # --only-articles filter (used for delta extract: restrict to a precomputed
+    # article-id set so we re-extract only the new articles missing from the
+    # current facts pool, not the whole 200k-article unified pool).
+    if args.only_articles:
+        keep = set()
+        with open(args.only_articles, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                aid = rec.get("id") or rec.get("article_id")
+                if aid:
+                    keep.add(aid)
+        before = len(articles)
+        articles = [a for a in articles if a["id"] in keep]
+        print(f"[only-articles] kept {len(articles)} / {before} matching {len(keep)} ids in {args.only_articles}")
 
     # Resume filter
     if args.force:
@@ -386,7 +516,8 @@ def main():
         cid = f"etd::{art['id']}"
         res = results.get(cid)
         content = res.content if isinstance(res, BatchResult) else ""
-        facts, errors = parse_response(content, art, extract_run, args.model, validator)
+        facts, errors = parse_response(content, art, extract_run, args.model, validator,
+                                       strict_dates=args.strict_dates)
 
         # Persist
         for f in facts:
