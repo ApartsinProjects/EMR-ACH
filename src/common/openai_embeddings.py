@@ -192,12 +192,34 @@ def encode_batch(texts: list[str], model: str = DEFAULT_MODEL,
             chunks.append((i, chunk_dir, chunk_texts, state["batch_id"]))
 
         # Phase 2: poll all chunks in a round-robin loop until each is terminal.
+        # Offline-salvage short-circuit: if a chunk's output.jsonl already has
+        # >= N rows on disk (e.g. a sibling sync run populated it because the
+        # upstream batch stalled), treat the chunk as "completed locally" and
+        # skip polling entirely. Phase 3 will reassemble from disk without
+        # hitting files.content().
         t0 = time.time()
         done_batches: dict[int, any] = {}
+
+        class _LocalCompleted:
+            status = "completed"
+            output_file_id = None  # signals phase 3 to read from disk
+
         while len(done_batches) < n_chunks and time.time() - t0 < timeout_sec:
             for i, chunk_dir, chunk_texts, bid in chunks:
                 if i in done_batches:
                     continue
+                out_path = chunk_dir / "output.jsonl"
+                if out_path.exists() and out_path.stat().st_size > 0:
+                    got = 0
+                    with out_path.open(encoding="utf-8") as fh:
+                        for _ in fh:
+                            got += 1
+                    if got >= len(chunk_texts):
+                        done_batches[i] = _LocalCompleted()
+                        print(f"[encode_batch]   chunk {i+1}/{n_chunks} "
+                              f"LOCAL-COMPLETED ({got} rows on disk; "
+                              f"skipping OpenAI poll)")
+                        continue
                 b = client.batches.retrieve(bid)
                 if b.status in ("completed", "failed", "expired", "cancelled"):
                     done_batches[i] = b
@@ -224,8 +246,15 @@ def encode_batch(texts: list[str], model: str = DEFAULT_MODEL,
 
             out_path = chunk_dir / "output.jsonl"
             # Reuse existing on-disk output.jsonl if already downloaded (e.g.
-            # pre-downloaded as a hedge); otherwise fetch.
+            # pre-downloaded as a hedge, or produced by an offline sync run
+            # that bypassed OpenAI's Batch API); otherwise fetch.
             if not out_path.exists() or out_path.stat().st_size == 0:
+                if not getattr(b, "output_file_id", None):
+                    raise RuntimeError(
+                        f"chunk {i} has no local output.jsonl and no "
+                        f"output_file_id (LOCAL-COMPLETED short-circuit "
+                        f"requires a pre-populated output.jsonl)."
+                    )
                 out_bytes = client.files.content(b.output_file_id).read()
                 out_path.write_bytes(out_bytes)
 
