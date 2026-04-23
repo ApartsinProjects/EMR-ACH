@@ -878,5 +878,141 @@ Return JSON only, no prose, no code fences:<br>
   Two outlets, <code>news.fjsen.com</code> and <code>world.people.com.cn</code>, were identified as systematic sources of stale-republish content and are excluded at extraction time via <code>articles_to_facts.py --source-blocklist</code>. The Phase B verifier (a downstream LLM-as-judge that checks every extracted fact against the source article and rates support strength) reports a clean trajectory across prompt revisions: <strong>v1</strong> baseline $15.5\%$ unsupported-at-high-confidence (the worst offender), <strong>v3</strong> with anchor table + verbatim quote requirement $11.8\%$, and <strong>v3 + source blocklist</strong> $\sim 0\%$ (the residual stale-republish failures were the dominant remaining error mode).
 </p>
 
+
+<h2>Appendix F: Baseline Methods Reference</h2>
+<p>
+  This appendix expands the one-line descriptions in &sect;5.2 with a short paragraph per baseline. The authoritative per-method reference, with prompt paths, config knobs, and known limitations, is <code>benchmark/evaluation/BASELINES.md</code>; the text below paraphrases it for the reader who does not want to leave the paper. Every baseline shares the same <code>gpt-4o-mini-2024-07-18</code> backbone, the same retrieved article set ($n = 10$ after horizon filter), the same JSON pick contract (<code>{"prediction": "&lt;one of hypothesis_set&gt;", "reasoning": "..."}</code>), and the same prior-state expectation block that tells the model the status-quo outcome before asking it to pick Comply or Surprise.
+</p>
+
+<h3>F.1 Majority-class reference</h3>
+<p>
+  A trivial baseline that always predicts the most-frequent class in the benchmark, disregarding both question and articles. It is not an LLM at all; it is the persistence-prior floor. On ForecastBench under the binary Comply/Surprise target the accuracy is the Comply-class rate, $\sim 83\%$ by construction; on GDELT-CAMEO and Earnings the rate is pending the Phase-3 build manifest. The paper treats any system that fails to exceed this floor on a given benchmark as having no measurable selection skill on that benchmark. The reference replaces the deprecated B8 (Verbalized Confidence) in every headline results table.
+</p>
+
+<h3>F.2 Per-baseline summaries</h3>
+<ul>
+  <li><strong>B1 Direct Prompting</strong> (Brown et al. 2020, arXiv:2005.14165). One call per FD, no articles, no reasoning scaffold. The lower bound: if a more expensive method matches B1 the complexity buys nothing. Probes how much of the headline a closed-book prior alone already predicts.</li>
+  <li><strong>B2 Chain-of-Thought</strong> (Wei et al. 2022, arXiv:2201.11903). Same inputs as B1 but the instruction block forces a support-vs-disconfirm walk through each candidate hypothesis before the final pick. Single call, single sample, still closed-book; the contrast against B1 isolates the value of reasoning scaffolding alone.</li>
+  <li><strong>B3 RAG-only</strong> (Lewis et al. 2020, arXiv:2005.11401). Adds the $n = 10$ retrieved articles to the B1 prompt; no reasoning scaffold, single call. Contrast against B1/B2 isolates the value of evidence; contrast against EMR-ACH isolates the value of structured evidence aggregation over a flat article dump.</li>
+  <li><strong>B4 Self-Consistency</strong> (Wang et al. 2022, arXiv:2203.11171). Four CoT samples at temperature $0.7$; plurality vote over the four picks. Controls for sampling variance: if EMR-ACH's lift over B2 is sampling-noise reduction in disguise, B4 would already close the gap.</li>
+  <li><strong>B5 Multi-Agent Debate</strong> (Du et al. 2023, arXiv:2305.14325). Two agents, one round, plurality vote. Controls for generic multi-agent deliberation: EMR-ACH's Step-7 advocacy layer is structured per-hypothesis debate, while B5 is unstructured peer revision; the gap between them isolates the value of hypothesis-aligned advocacy.</li>
+  <li><strong>B6 Tree-of-Thoughts</strong> (Yao et al. 2023, arXiv:2305.10601). Breadth-2, depth-2, plurality over leaves; no value-function pruning. Controls for deliberate branching search as an alternative structured-reasoning regime.</li>
+  <li><strong>B7 Reflexion</strong> (Shinn et al. 2023, arXiv:2303.11366). Two iterations: initial CoT pick, one self-critique + revise pass. Controls for iterative self-correction, another standard non-matrix structured-reasoning strategy.</li>
+  <li><strong>B8</strong> (<em>deprecated under pick-only</em>). Verbalized Confidence (Lin et al. 2022; Tian et al. 2023) calibrates probability, which this benchmark does not evaluate; the implementation degenerates to B3 and is replaced by the majority-class reference above.</li>
+  <li><strong>B9 LLM Ensemble</strong> (Jiang et al. 2023, arXiv:2306.02561). Three <code>(model, temperature)</code> configurations, plurality vote; default is temperature-only diversity ($T \in \{0.0, 0.5, 1.0\}$) at the same model. Controls for model-ensembling; cross-model heterogeneity is omitted for cost and is noted as an extension.</li>
+  <li><strong>B10 Hybrid (articles + facts)</strong> and <strong>B10b Facts-only</strong> (planned, Category F in <code>docs/V2_2_REFACTOR_BACKLOG.md</code>). Consume the ETD atomic-fact layer (Appendix E) alongside or in place of raw articles; the marginal value of the fact layer is the subject of Table 6.</li>
+</ul>
+
+<p>
+  B4 through B9 collectively target three orthogonal alternative hypotheses for the source of EMR-ACH's lift: sampling-variance reduction (B4), generic multi-agent deliberation without a hypothesis matrix (B5, B6, B7), and model-ensembling (B9). If the full EMR-ACH system still outperforms after controlling for all three, the remaining gap is attributable to the evidence-matrix structure itself.
+</p>
+
+
+<h2>Appendix G: Worked Examples</h2>
+<p>
+  This appendix shows one concrete FD per benchmark, one worked dense-retrieval example, one worked earnings relational-join example, and one worked production-filter verdict. Long article bodies and tangential JSON fields are elided; all numeric IDs are drawn from the v2.1 build (<code>benchmark/data/2026-01-01/</code>, manifest SHA pinned in <code>build_manifest.json</code>, commit <code>0df1957</code>).
+</p>
+
+<h3>G.1 ForecastBench FD (binary, stability)</h3>
+<div class="alg" style="font-size:8.5pt;line-height:1.45;">
+id: fb_KtGRsTouYWiD<br>
+benchmark: forecastbench &nbsp;/&nbsp; source: manifold<br>
+question: "Will an artificial intelligence system play a major artistic role in the 2024 Olympic opening ceremonies?"<br>
+background: "Olympic ceremonies have often featured technologies [...] This market will resolve to YES if [...] Otherwise, the market resolves to NO."<br>
+forecast_point: 2024-07-27 &nbsp;/&nbsp; resolution_date: 2024-07-27 &nbsp;/&nbsp; lookback_days: 90 &nbsp;/&nbsp; default_horizon_days: 14<br>
+hypothesis_set: ["Comply", "Surprise"] &nbsp;/&nbsp; x_multiclass_hypothesis_set: ["Yes", "No"]<br>
+crowd_probability: 0.133 &nbsp;/&nbsp; prior_state_30d: "No" &nbsp;/&nbsp; prior_state_stability: 0.734<br>
+x_multiclass_ground_truth: "No" &nbsp;/&nbsp; ground_truth: "Comply" &nbsp;/&nbsp; fd_type: stability<br>
+article_ids: [art_1e7cb2b2f8c8, art_84abbb67c0b4, art_b84361ef487e]
+</div>
+<p>
+  This is a <em>stability</em> FD: the crowd-implied prior ("No") matched the resolved outcome, so Comply is correct. A persistence predictor wins trivially; the FD is excluded from headline metrics and reported on the stability floor row.
+</p>
+
+<h3>G.2 GDELT-CAMEO FD (3-class intensity, stability)</h3>
+<div class="alg" style="font-size:8.5pt;line-height:1.45;">
+id: gdc_70<br>
+benchmark: gdelt-cameo &nbsp;/&nbsp; source: gdelt-kg<br>
+question: "Based on news from the preceding months, what is the dominant intensity of interaction between Kuwait and Türkiye on or around 2026-03-01: peace, tension, or violence?"<br>
+forecast_point: 2026-03-01 &nbsp;/&nbsp; lookback_days: 90 &nbsp;/&nbsp; default_horizon_days: 14<br>
+actors: [KWT, TUR] &nbsp;/&nbsp; event_base_code: 160 &nbsp;/&nbsp; intensity_class: Tension<br>
+prior_state_30d: "Tension" &nbsp;/&nbsp; prior_state_stability: 1.0 &nbsp;/&nbsp; prior_state_n_events: 6<br>
+x_multiclass_ground_truth: "Tension" &nbsp;/&nbsp; ground_truth: "Comply" &nbsp;/&nbsp; fd_type: stability<br>
+article_ids: [art_515d54d0d9be, art_51c7a712625b, art_8c497e45c409, art_8ff9acd3fcc5, art_dd8684be6545]
+</div>
+<p>
+  KWT-TUR sat at Tension throughout the prior 30 days (stability = 1.0, 6 prior events all-Tension). The 2026-03-01 resolution was also Tension, so the FD is Comply / stability. Editorial articles (NYT, Guardian, Google News) are retrieved for this pair with the actor-pair pre-filter; the GDELT KG that produced the label is excluded from retrieval per &sect;5.1.
+</p>
+
+<h3>G.3 Earnings FD (3-class Beat/Meet/Miss, change)</h3>
+<div class="alg" style="font-size:8.5pt;line-height:1.45;">
+id: earn_MMM_2026-01-20<br>
+benchmark: earnings &nbsp;/&nbsp; source: yfinance<br>
+question: "Will 3M Company (MMM) beat, meet, or miss analyst EPS consensus for earnings reported on 2026-01-20?"<br>
+background: "Sector: Industrials. Industry: Conglomerates. Ticker: MMM. Reporting quarter: Q1-2026. Analyst consensus EPS estimate: 1.80."<br>
+forecast_point: 2026-01-19 &nbsp;/&nbsp; resolution_date: 2026-01-20 &nbsp;/&nbsp; lookback_days: 14<br>
+prior_state_30d: "Beat" &nbsp;/&nbsp; prior_state_stability: 0.75 &nbsp;/&nbsp; prior_state_n_events: 4<br>
+x_multiclass_ground_truth: "Meet" &nbsp;/&nbsp; ground_truth: "Surprise" &nbsp;/&nbsp; fd_type: change<br>
+article_ids: [art_bb259a2b1b67, art_a995e28f70db, art_a45adffde705, art_c00cfcccbcaa, art_20396cf22ea2, art_617adbcfa245, art_cfb6753f701d, art_18d47942adcb, art_e39418e99fae, art_b73d83160f6c]
+</div>
+<p>
+  MMM had Beat in three of the prior four quarters (mode = Beat). The reported Q1-2026 result was Meet, which breaks the Beat prior: primary target Surprise, fd_type change. This is the stratum where forecasting skill is actually tested; the model must read the pre-event article pool and detect the miss signal against a chronic-beater prior. Note the ten <code>article_ids</code>: all ten slots are filled by the ticker-date relational join described in &sect;G.5, not by dense cosine.
+</p>
+
+<h3>G.4 Worked retrieval example (ForecastBench / GDELT-CAMEO dense cosine)</h3>
+<p>
+  For a ForecastBench or GDELT-CAMEO FD, <code>scripts/compute_relevance.py</code> runs the following per-FD flow (simplified; full mechanics in Appendix C.4):
+</p>
+<ol>
+  <li><strong>Candidate pool.</strong> Restrict the unified article pool to <code>publish_date &lt; forecast_point</code> and within $T$ days lookback. For GDELT-CAMEO apply the actor-pair pre-filter: drop articles whose text mentions neither the source nor the object country (ISO-3 or demonym match). At this point the candidate pool for a typical GDELT-CAMEO FD is on the order of a few hundred editorial articles.</li>
+  <li><strong>Embed.</strong> Encode the FD's query text (question + background) once; each candidate article is encoded once per cutoff and cached (fingerprinted by article id + backend). Default backend in v2.2 is OpenAI <code>text-embedding-3-small</code> (dim 1536) via Batch; SBERT <code>all-mpnet-base-v2</code> (dim 768) is the offline fallback. The two caches coexist and the active one is pinned in <code>build_manifest.json</code>.</li>
+  <li><strong>Score.</strong> Cosine between query and every candidate; apply the per-source <code>embedding_threshold</code> floor and the keyword-overlap floor. Survivors are ordered by score.</li>
+  <li><strong>Top-$K$.</strong> Take the top 10; these become the FD's <code>article_ids</code> slot. At experiment time the runner's <code>apply_experiment_horizon()</code> drops any survivor with <code>publish_date &gt; resolution_date - horizon_days</code> (default 14) to enforce the forecast embargo; the pool feeding the EMR-ACH matrix $A$ is whatever remains after that filter.</li>
+</ol>
+<p>
+  For the GDELT-CAMEO FD in &sect;G.2, the five surviving articles after the horizon filter (reported date $\leq 2026\text{-}02\text{-}15$) are the ones enumerated in <code>article_ids</code>. EMR-ACH then scores each of these against $m = 9$ contrastive indicators (Peace-vs-Tension, Tension-vs-Violence, Peace-vs-Violence, three per pair) and aggregates under $d_j$ weights into three per-hypothesis scores whose argmax is the final pick.
+</p>
+
+<h3>G.5 Worked earnings example (ticker-date relational join)</h3>
+<p>
+  <code>scripts/link_earnings_articles.py</code> does not call SBERT or OpenAI embeddings. For each earnings FD it runs a structured key join:
+</p>
+<ol>
+  <li>Inputs: <code>ticker</code>, <code>announce_date</code>, <code>lookback=90</code>, $K = 10$.</li>
+  <li>Filter the earnings-tagged article pool to rows where <code>tickers</code> contains the FD ticker and <code>publish_date $\in$ [announce_date - lookback, announce_date)</code>.</li>
+  <li>Rank survivors by source priority (SEC EDGAR 8-K filings first, then Finnhub, then yfinance, then Google News, then GDELT DOC) and then by publish date descending.</li>
+  <li>Take the top 10. If the pool has fewer than 10, take all; at $K = 10$ the rule fills $\sim 90\%$ of FDs (483 of 535 in the v2.1 build).</li>
+</ol>
+<p>
+  The MMM / 2026-01-20 FD in &sect;G.3 has all ten slots filled because 3M has a well-populated Q1-2026 pre-event news window across SEC filings, Finnhub, and yfinance. Dense cosine over a generic editorial pool was empirically the wrong default here: the structured key is already unambiguous, so cosine re-ranking adds noise. This is why the v2.1 routing (&sect;C.4) picks the relational join for the earnings slice and dense cosine for the other two benchmarks.
+</p>
+
+<h3>G.6 Worked production-filter verdict (ETD Stage 1)</h3>
+<p>
+  The production filter for the ETD atomic-fact layer (&sect;E.1) composes several drop rules; a worked verdict looks like:
+</p>
+<div class="alg" style="font-size:8.5pt;line-height:1.5;">
+<strong>raw fact</strong> (Stage 1 v3 output, abridged):<br>
+&nbsp;&nbsp;fact_id: etd_f_9a7b22c1<br>
+&nbsp;&nbsp;source_article: art_&lt;blocked&gt; &nbsp;(host: news.fjsen.com)<br>
+&nbsp;&nbsp;claim: "Chinese defense ministry announced joint exercises with Tanzania in July 2024."<br>
+&nbsp;&nbsp;quoted_span: "...Peace-Solidarity-2024 joint exercises with Tanzania..."<br>
+&nbsp;&nbsp;event_date: 2024-07-25 &nbsp;/&nbsp; publish_date: 2024-07-26<br>
+&nbsp;&nbsp;polarity: asserted &nbsp;/&nbsp; confidence: 0.91<br>
+<br>
+<strong>flagged reasons</strong>:<br>
+&nbsp;&nbsp;[DROP] source-blocklist: host <code>news.fjsen.com</code> is in the stale-republish blocklist (&sect;E.4).<br>
+&nbsp;&nbsp;[PASS] strict-dates: publish_date &gt; event_date (1-day gap is within tolerance).<br>
+&nbsp;&nbsp;[PASS] strict-quotes: quoted_span appears verbatim in the article body.<br>
+&nbsp;&nbsp;[PASS] min-confidence: 0.91 &ge; 0.50 floor.<br>
+&nbsp;&nbsp;[PASS] asserted polarity: not speculative or conditional.<br>
+&nbsp;&nbsp;[PASS] no-future: event_date &lt; forecast_point for every FD this fact could link to.<br>
+<br>
+<strong>verdict</strong>: DROP (source-blocklist fires first, short-circuits).
+</div>
+<p>
+  Under the v1 prompt the same fact would have survived with a high-confidence rating despite the stale-republish source; the v3 prompt plus source blocklist is what drops the $\sim 15\%$ unsupported-at-high-confidence tail to $\sim 0\%$ (&sect;E.4). Facts that survive every rule propagate to Stage 2 (dedup) and Stage 3 (FD linkage); dropped facts are written to <code>etd_dropped.jsonl</code> with the rule name as the drop reason, mirroring the forecasts-level audit trail.
+</p>
+
 </body>
 </html>
