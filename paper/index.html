@@ -163,7 +163,7 @@ caption{caption-side:bottom;font-size:9pt;color:var(--cap);
 <ol>
   <li><strong>Variable-horizon evaluation.</strong> MIRAI fixes <em>forecast_point</em> at November 1 and labels events throughout the entire test month, so the effective prediction horizon ranges from 0 days (Nov 1 events — essentially nowcasting) to ~30 days (late-November events). Reported F1 is the mix, making it impossible to separate nowcasting competence from true forecasting skill. EMR-ACH applies a <strong>fixed 14-day forecast horizon</strong> per FD (configurable; see §5.6), guaranteeing that every evaluated prediction is made with at least a two-week evidence embargo.</li>
   <li><strong>No expectation baseline.</strong> MIRAI evaluates on the raw quad label directly, so trivially-predicted "stability" FDs (already-violent pairs predicted to stay violent, already-peaceful pairs predicted to stay peaceful) dominate the easy-base-rate cases and dilute the headline. Forecasting skill, the thing the benchmark should reward, is only meaningfully tested when the outcome breaks the status-quo expectation. EMR-ACH's <strong>Comply vs Surprise</strong> binary primary target (§3.2) makes this explicit and reports headline numbers on the change subset where prior expectation fails.</li>
-  <li><strong>Low-distinguishability classes.</strong> MIRAI's quad-class target (VC / MC / VK / MK) has two semantically-close pairs that even competent LLMs confuse systematically: Verbal Cooperation vs. Material Cooperation, and Verbal Conflict vs. Material Conflict. In our pilot experiments, gpt-4o-mini collapses 76% of Verbal Cooperation FDs onto Material Cooperation regardless of article evidence. EMR-ACH's GDELT-CAMEO label is a <strong>3-class ordinal intensity</strong> (Peace / Tension / Violence) mapped directly from CAMEO root codes (§3.3, Table 5); class boundaries are interpretable to both humans and LLMs, and baselines make sensible predictions without the confusable-pair collapse.</li>
+  <li><strong>Low-distinguishability classes.</strong> MIRAI's quad-class target (VC / MC / VK / MK) has two semantically-close pairs that even competent LLMs confuse systematically: Verbal Cooperation vs. Material Cooperation, and Verbal Conflict vs. Material Conflict. In our pilot experiments, gpt-4o-mini collapses 76% of Verbal Cooperation FDs onto Material Cooperation regardless of article evidence. EMR-ACH's GDELT-CAMEO label is a <strong>3-class ordinal intensity</strong> (Peace / Tension / Violence) mapped directly from CAMEO root codes (§3.3, Table 1); class boundaries are interpretable to both humans and LLMs, and baselines make sensible predictions without the confusable-pair collapse.</li>
 </ol>
 <p>
   Tang et al. [28] attack a similar problem with iterative news-grounded reasoning, and Xie et al. [27] build a multi-stage news-to-forecast pipeline. Abolghasemi et al. [16] introduce ThinkTank-ME, a domain-specialized fine-tuned expert model for Middle East forecasting. EMR-ACH differs fundamentally from all of these: no fine-tuning, uniform task across three heterogeneous domains (geopolitics, finance, prediction markets), explicit horizon + Comply/Surprise primary target, and evidence-matrix aggregation rather than free-form reasoning.
@@ -257,7 +257,7 @@ $$
 </p>
 
 <table>
-  <caption>Table 5. FD slot instantiation by benchmark, with v2.1 prior-state and primary-target rows.</caption>
+  <caption>Table 1. FD slot instantiation by benchmark, with v2.1 prior-state and primary-target rows.</caption>
   <tr>
     <th>Slot</th><th>ForecastBench</th><th>GDELT-CAMEO</th><th>Earnings</th>
   </tr>
@@ -272,7 +272,7 @@ $$
 </table>
 
 <p>
-  Under this abstraction, no single benchmark is special to the method; each is one instantiation. Extending to a further benchmark (e.g., medical differentials) requires only a new row in Table 5 and a source-specific relevance + prior-state function.
+  Under this abstraction, no single benchmark is special to the method; each is one instantiation. Extending to a further benchmark (e.g., medical differentials) requires only a new row in Table 1 and a source-specific relevance + prior-state function.
 </p>
 
 <h3>3.4 Evaluation Metrics</h3>
@@ -406,11 +406,11 @@ $$
 
 <h4>Source-to-FD mapping</h4>
 <p>
-  Table 6 summarizes how each upstream source is normalized into the unified FD record contract. The same six output fields, derived by source-specific code paths, drop into the same JSONL record schema for every domain.
+  Table 2 summarizes how each upstream source is normalized into the unified FD record contract. The same six output fields, derived by source-specific code paths, drop into the same JSONL record schema for every domain.
 </p>
 
 <table>
-  <caption>Table 6. Mapping from raw upstream sources to the unified FD record contract. The same column on the right is filled by every domain; the left column lists the source-specific paths.</caption>
+  <caption>Table 2. Mapping from raw upstream sources to the unified FD record contract. The same column on the right is filled by every domain; the left column lists the source-specific paths.</caption>
   <tr>
     <th>Domain</th>
     <th>Upstream source(s)</th>
@@ -457,7 +457,7 @@ $$
 </p>
 
 <table>
-  <caption>Table 6a. Gold subset composition by benchmark $\times$ <code>fd_type</code>. Counts to be filled at gold-subset build time from <code>benchmark/data/2026-01-01-gold/build_manifest.json</code>.<sup>*</sup></caption>
+  <caption>Table 3. Gold subset composition by benchmark $\times$ <code>fd_type</code>. Counts to be filled at gold-subset build time from <code>benchmark/data/2026-01-01-gold/build_manifest.json</code>.<sup>*</sup></caption>
   <tr><th>benchmark</th><th>stability</th><th>change</th><th>total</th></tr>
   <tr><td><code>forecastbench</code></td><td>[PENDING]</td><td>[PENDING]</td><td>[PENDING]</td></tr>
   <tr><td><code>gdelt-cameo</code></td><td>[PENDING]</td><td>[PENDING]</td><td>[PENDING]</td></tr>
@@ -514,9 +514,9 @@ $$
 <ul>
   <li><strong>Phase 0 (Benchmark build).</strong> Run <code>python scripts/build_benchmark.py --cutoff YYYY-MM-DD</code> to construct the unified FD file at the target cutoff (per-benchmark raw build, multi-source news fetch, prior-state annotation with Comply/Surprise promotion, relevance, quality filter, diagnostic + EDA, publish); run the leakage audit; publish <code>benchmark/data/{cutoff}/</code>. We build two cutoffs: the primary 2026-01-01 build and the 2024-04-01 leakage-probe build.</li>
   <li><strong>Phase 1 (Smoke tests, sync, 10 FDs/stage).</strong> Verify prompt to parsed pick for every baseline and every EMR-ACH stage. Success criterion: 10/10 parse into valid $\mathcal{H}$ labels.</li>
-  <li><strong>Phase 2 (Baselines B1 to B9, minus the deprecated B8).</strong> Full-benchmark run on all eight live baselines plus the majority-class reference, via the OpenAI Batch API. Report Table 1 (accuracy, macro-F1, BalAcc, NBA, MCC per baseline × benchmark × <code>fd_type</code>).</li>
-  <li><strong>Phase 3 (EMR-ACH).</strong> Full pipeline run. Report Table 2 (incremental build-up) and Table 3 (baselines vs. full system) on the primary cutoff, with the leakage-probe cutoff repeated for B1 (Direct) and EMR-ACH-full only.</li>
-  <li><strong>Phase 4 (Ablation and scaling).</strong> Ablation Table 4; multi-agent scaling; per-benchmark and per-<code>fd_type</code> breakdown.</li>
+  <li><strong>Phase 2 (Baselines B1 to B9, minus the deprecated B8).</strong> Full-benchmark run on all eight live baselines plus the majority-class reference, via the OpenAI Batch API. Report Table 5 (accuracy, macro-F1, BalAcc, NBA, MCC per baseline × benchmark × <code>fd_type</code>).</li>
+  <li><strong>Phase 3 (EMR-ACH).</strong> Full pipeline run. Report Table 5 (baselines vs. full EMR-ACH, with the incremental build-up in the same table) on the primary cutoff, with the leakage-probe cutoff repeated for B1 (Direct) and EMR-ACH-full only.</li>
+  <li><strong>Phase 4 (Ablation and scaling).</strong> Component ablation (Table 7); hybrid-vs-articles-only ablation (Table 6); multi-agent scaling; per-benchmark and per-<code>fd_type</code> breakdown.</li>
 </ul>
 
 <h3>5.6 Implementation Details</h3>
@@ -525,7 +525,7 @@ $$
 </p>
 
 <table>
-  <caption>Table 7. API call count and estimated per-FD cost at <code>gpt-4o-mini</code> Batch API pricing ($0.075/1M input, $0.300/1M output). Averages across three benchmarks.</caption>
+  <caption>Table 4. API call count and estimated per-FD cost at <code>gpt-4o-mini</code> Batch API pricing ($0.075/1M input, $0.300/1M output). Averages across three benchmarks.</caption>
   <tr>
     <th>System</th><th>LLM calls / FD</th><th>Est. cost / FD</th><th>Relative to B1</th>
   </tr>
@@ -547,7 +547,7 @@ $$
 <h3>6.1 Main Results (Full Benchmark)</h3>
 
 <table>
-  <caption>Table 1. Selection accuracy and macro-F1 on all three benchmarks, for all baselines and EMR-ACH variants. <strong>[PENDING Phase-3 run.]</strong> Shaded rows are our system variants. Bold = best per column. 95% bootstrap CIs on accuracy shown in brackets. Majority-class reference is the trivial baseline; a system that does not beat it on a given benchmark has no selection skill on that benchmark.</caption>
+  <caption>Table 5. Selection accuracy and macro-F1 on all three benchmarks, for all baselines and EMR-ACH variants. <strong>[PENDING Phase-3 run.]</strong> Shaded rows are our system variants. Bold = best per column. 95% bootstrap CIs on accuracy shown in brackets. Majority-class reference is the trivial baseline; a system that does not beat it on a given benchmark has no selection skill on that benchmark.</caption>
   <tr>
     <th rowspan="2">Method</th>
     <th colspan="2">ForecastBench (binary)</th>
@@ -576,12 +576,12 @@ $$
 
 <h3>6.2 Per-Class Breakdown (GDELT-CAMEO)</h3>
 <p>
-  Table 2 (pending) reports per-class recall for Peace / Tension / Violence under three representative system configurations: best baseline, EMR-ACH base, and full system. This isolates which classes benefit most from diagnosticity weighting vs. multi-agent debate.
+  A pending per-class-recall figure reports recall for Peace / Tension / Violence under three representative system configurations: best baseline, EMR-ACH base, and full system. This isolates which classes benefit most from diagnosticity weighting vs. multi-agent debate.
 </p>
 
-<h3>6.2.1 Table 3, Hybrid-vs-articles-only ablation</h3>
+<h3>6.2.1 Hybrid-vs-articles-only ablation</h3>
 <p>
-  Table 3 isolates the marginal value of the ETD atomic-fact layer
+  Table 6 isolates the marginal value of the ETD atomic-fact layer
   (see Appendix C and the Category F backlog in
   <code>docs/V2_2_REFACTOR_BACKLOG.md</code>) by comparing three baseline
   configurations on the gold subset (see &sect;5.1.1):
@@ -593,7 +593,7 @@ $$
   <code>scripts/eval/smoke_baselines_on_gold.sh</code>.
 </p>
 <table>
-  <caption>Table 3. Hybrid-vs-articles-only ablation across B3 / B10 / B10b on the gold subset. <strong>[PENDING gold build.]</strong> Headline metrics on the Change subset; full-set metrics in the right two columns are reported for context only.<sup>&dagger;</sup></caption>
+  <caption>Table 6. Hybrid-vs-articles-only ablation across B3 / B10 / B10b on the gold subset. <strong>[PENDING gold build.]</strong> Headline metrics on the Change subset; full-set metrics in the right two columns are reported for context only.<sup>&dagger;</sup></caption>
   <thead>
     <tr>
       <th>Method</th>
@@ -621,7 +621,7 @@ $$
 
 <h3>6.4 Ablation Study</h3>
 <table>
-  <caption>Table 4. Component ablation: each contribution removed from the full system independently. $\Delta$Acc = accuracy change vs. full system (averaged across benchmarks). <strong>[PENDING Phase-3 run.]</strong></caption>
+  <caption>Table 7. Component ablation: each contribution removed from the full system independently. $\Delta$Acc = accuracy change vs. full system (averaged across benchmarks). <strong>[PENDING Phase-3 run.]</strong></caption>
   <tr>
     <th>Configuration</th><th>Acc (%)</th><th>$\Delta$Acc</th><th>Macro-F1</th>
   </tr>
@@ -653,7 +653,7 @@ $$
 
 <h3>7.3 Trade-offs: Oracle vs. Automated Retrieval</h3>
 <p>
-  Replacing automated RAG with benchmark-provided oracle document IDs (where available) improves selection accuracy by a modest margin, but our algorithmic contributions (contrastive indicators + diagnostic weighting + multi-agent debate) contribute more to performance than retrieval quality alone. The full ablation over retrieval components (MMR/RRF and temporal decay) is reported in Table 4.
+  Replacing automated RAG with benchmark-provided oracle document IDs (where available) improves selection accuracy by a modest margin, but our algorithmic contributions (contrastive indicators + diagnostic weighting + multi-agent debate) contribute more to performance than retrieval quality alone. The full ablation over retrieval components (MMR/RRF and temporal decay) is reported in Table 7.
 </p>
 
 <h3>7.4 Limitations</h3>
@@ -779,7 +779,7 @@ Return JSON only, no prose, no code fences:<br>
 
 <h3>C.3 Quality filter and Comply/Surprise promotion</h3>
 <p>
-  The quality filter is the single acceptance gate; FDs that fail any rule are written to <code>forecasts_dropped.jsonl</code> with a per-FD drop reason for the diagnostic report. The Comply/Surprise binary primary target (&sect;3.2) is computed earlier, at the prior-state annotation stage, by <code>scripts/annotate_prior_state.py</code>; the script consumes the domain-specific prior-state oracle defined in Table 5 and writes both the partition tag (<code>fd_type</code>) and the binary label onto every FD before the quality filter sees it.
+  The quality filter is the single acceptance gate; FDs that fail any rule are written to <code>forecasts_dropped.jsonl</code> with a per-FD drop reason for the diagnostic report. The Comply/Surprise binary primary target (&sect;3.2) is computed earlier, at the prior-state annotation stage, by <code>scripts/annotate_prior_state.py</code>; the script consumes the domain-specific prior-state oracle defined in Table 1 and writes both the partition tag (<code>fd_type</code>) and the binary label onto every FD before the quality filter sees it.
 </p>
 
 <h3>C.4 Retrieval routing</h3>
