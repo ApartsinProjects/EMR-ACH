@@ -62,26 +62,26 @@
   "etd_etd_v2_chunked__chunk_000_of_005": {
     "batch_id": "batch_69e8f96604308190be4be97f4b177532",
     "job_name": "etd_etd_v2_chunked__chunk_000_of_005",
-    "status": "in_progress"
+    "status": "completed"
   },
   "etd_etd_v2_chunked__chunk_001_of_005": {
     "batch_id": "batch_69e8f979e79c8190bb5fd8556ca7d521",
     "job_name": "etd_etd_v2_chunked__chunk_001_of_005",
-    "status": "in_progress"
+    "status": "completed"
   },
   "etd_etd_v2_chunked__chunk_002_of_005": {
     "batch_id": "batch_69e8f98c022c8190bdfe4e050e1f5439",
     "job_name": "etd_etd_v2_chunked__chunk_002_of_005",
-    "status": "in_progress"
+    "status": "completed"
   },
   "etd_etd_v2_chunked__chunk_003_of_005": {
     "batch_id": "batch_69e8f9a0e1908190b05dd13d9f28a581",
     "job_name": "etd_etd_v2_chunked__chunk_003_of_005",
-    "status": "in_progress"
+    "status": "completed"
   },
   "etd_etd_v2_chunked__chunk_004_of_005": {
     "batch_id": "batch_69e8f9aa5a2481908634a7e40cc101dd",
     "job_name": "etd_etd_v2_chunked__chunk_004_of_005",
-    "status": "in_progress"
+    "status": "completed"
   }
 }
