@@ -271,10 +271,56 @@ Subsumed by B4's `src/common/paths.py`.
 
 ---
 
+## Category F, Baselines and evaluation extensions
+
+### F1. B10 hybrid baseline (facts + article snippets)
+Files: `benchmark/evaluation/baselines/methods/b10_hybrid_facts_articles.py` (NEW). Effort: M. Priority: P1. Deps: ETD post-publish landing (`scripts/etd_post_publish.py`); production fact set at `data/etd/facts.v1_production_{cutoff}.jsonl`.
+
+Adds a new pick-only baseline that consumes BOTH the production-filtered ETD facts and the original article snippets in a single prompt, instead of articles-only (B3) or facts-only (B10b, future). Evidence block contract:
+
+```
+Evidence (atomic facts, dated):
+[F1] 2026-03-01  (high) Pakistan FM met Afghan ambassador. [actors: Pakistan, Afghanistan]
+[F2] 2026-03-02  (high) Casualty count rose to 47 per Reuters wire. [actors: Pakistan, Afghanistan]
+... up to top-K facts (default K=20) sorted by date
+
+Source articles (truncated):
+[A1] 2026-03-01 nytimes.com -- "Diplomatic meeting between..." [first 400 chars]
+[A2] 2026-03-02 reuters.com -- "Casualty count rises..." [first 400 chars]
+... up to top-N=10 articles
+```
+
+Rationale (from the v2.1 audit conversation): articles-only (current B3) loses long-form causal cues at 600-char truncation, and facts-only loses contextual subtext. Hybrid keeps both at ~1.5x baseline cost. Comparing B3 (articles) vs B10 (hybrid) isolates the value of structured ETD facts on top of the raw text.
+
+Implementation outline:
+1. Reuse `prompts.py:_BASE_USER` template; extend `articles_block` to include both sections (facts then articles).
+2. Index facts per FD via `linked_fd_ids` from Stage-3 output; sort by date; truncate to top-K=20.
+3. Score per-FD evidence the same way (top-N articles by SBERT cosine).
+4. Pick-only output schema unchanged.
+5. Register in `baselines.yaml` + `BASELINES.md` table.
+6. Update paper §5.2 to add B10 row.
+
+### F2. B10b facts-only RAG (sanity-check ablation)
+Files: `benchmark/evaluation/baselines/methods/b10b_facts_only.py` (NEW). Effort: S. Priority: P2. Deps: F1.
+
+Same as F1 but evidence block is facts only (no article snippets). Provides the bottom of the ablation triangle (B3 articles-only vs B10 hybrid vs B10b facts-only) so the paper can decompose the contribution of (a) raw text and (b) structured atoms separately.
+
+### F3. EMR-ACH analysis matrix accepts facts as rows
+Files: `experiments/02_emrach/run_emrach.py`, indicator-presence scoring step. Effort: M. Priority: P2. Deps: F1.
+
+Currently the EMR-ACH analysis matrix scores indicator presence per article. With Stage-3 linkage, each fact carries a `primary_article_id` and a `linked_fd_ids` list. Add a config flag `emrach.evidence_unit ∈ {article, fact, both}` so the analysis matrix can score per-fact, per-article, or both (with appropriate row labelling). "Both" rows let the diagnosticity weighting up-weight indicators that fire on dated facts vs free text.
+
+### F4. Carry the B10 / B10b results into a new paper Table 3
+Files: `paper/index.html` §6 results. Effort: S. Priority: P1. Deps: F1, F2 results landing.
+
+New table that decomposes article-only vs hybrid vs facts-only on the change-subset headline metric, per benchmark. Bolded delta cell makes the structured-evidence claim explicit.
+
+---
+
 ## Summary by priority
 
 - **P0 (blocks v2.2 launch)**: A1, A2, A3, A4, A6, A12, B1, B8, C1, C2, C3, D1, D7, E11, E12, E13.
-- **P1 (should land in v2.2)**: A5, A7, A8, A10, B2, B3, B4, B5, B6, B7, C4, C5, C6, C7, C10, D2, D3, D4, D5, E4.
-- **P2 (nice-to-have or follow-on)**: A9, A11, B9, B10, B11, B12, B13, B14, C8, C9, D6, E1, E2, E3, E5, E6, E7, E8, E9, E10, E14, E15, E16, E17, E18.
+- **P1 (should land in v2.2)**: A5, A7, A8, A10, B2, B3, B4, B5, B6, B7, C4, C5, C6, C7, C10, D2, D3, D4, D5, E4, **F1, F4**.
+- **P2 (nice-to-have or follow-on)**: A9, A11, B9, B10, B11, B12, B13, B14, C8, C9, D6, E1, E2, E3, E5, E6, E7, E8, E9, E10, E14, E15, E16, E17, E18, **F2, F3**.
 
-Total: 16 P0, 20 P1, 25 P2 = 61 items.
+Total: 16 P0, 22 P1, 27 P2 = 65 items.

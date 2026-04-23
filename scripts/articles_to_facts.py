@@ -288,7 +288,8 @@ def _fact_id(normalized_fact: str, primary_article_id: str, extract_run: str) ->
 
 
 def parse_response(content: str, article: dict, extract_run: str, extractor: str,
-                   validator=None, strict_dates: bool = False) -> tuple[list[dict], list[dict]]:
+                   validator=None, strict_dates: bool = False,
+                   strict_quotes: bool = False) -> tuple[list[dict], list[dict]]:
     """Returns (valid_facts, validation_errors)."""
     if not content:
         return [], [{"error_type":"empty_response","error_detail":"LLM returned empty content"}]
@@ -338,6 +339,27 @@ def parse_response(content: str, article: dict, extract_run: str, extractor: str
                 errors.append({"error_type": "validation_failed",
                                "error_detail": f"fact[{idx}] time {time_val} not on anchor grid "
                                                f"and not verbatim in body (publish_date={publish_date})"})
+                continue
+
+        # Strategy-3 evidence-quote validator (opt-in): when --strict-quotes is
+        # set, reject any fact whose `evidence_quote` is not a verbatim substring
+        # of the article body. Catches the "model invented a fact from world
+        # knowledge" failure mode (~rare in v3 but is the floor under date-side
+        # fixes). Requires the v3 prompt which solicits `evidence_quote`.
+        if strict_quotes:
+            eq = (rf.get("evidence_quote") or "").strip()
+            body_text = article.get("text") or ""
+            if not eq:
+                errors.append({"error_type": "validation_failed",
+                               "error_detail": f"fact[{idx}] missing evidence_quote (required under --strict-quotes)"})
+                continue
+            # Whitespace-collapse comparison so the model's quoted run doesn't
+            # need to be byte-identical to the body's whitespace.
+            eq_norm = re.sub(r"\s+", " ", eq).strip()
+            body_norm = re.sub(r"\s+", " ", body_text)
+            if eq_norm and eq_norm not in body_norm:
+                errors.append({"error_type": "validation_failed",
+                               "error_detail": f"fact[{idx}] evidence_quote not in article body"})
                 continue
 
         aid = article["id"]
@@ -421,6 +443,11 @@ def main():
     ap.add_argument("--strict-dates", action="store_true",
                     help="Post-extraction validator: reject day-precision dates that are NOT on the "
                          "anchor-offset grid AND NOT verbatim in the article body. Recommended with --prompt v3.")
+    ap.add_argument("--strict-quotes", action="store_true",
+                    help="Post-extraction validator: reject any fact whose `evidence_quote` field is "
+                         "missing or is not a verbatim substring of the article body (whitespace-collapsed). "
+                         "Catches model-invented facts that have no anchor in the source text. Requires "
+                         "the v3 prompt which solicits an evidence_quote per fact.")
     ap.add_argument("--only-articles", default=None,
                     help="Path to a JSONL file of article records (or {id} dicts) to restrict the "
                          "extraction set to. Used for the post-publish delta extract.")
@@ -517,7 +544,8 @@ def main():
         res = results.get(cid)
         content = res.content if isinstance(res, BatchResult) else ""
         facts, errors = parse_response(content, art, extract_run, args.model, validator,
-                                       strict_dates=args.strict_dates)
+                                       strict_dates=args.strict_dates,
+                                       strict_quotes=args.strict_quotes)
 
         # Persist
         for f in facts:
