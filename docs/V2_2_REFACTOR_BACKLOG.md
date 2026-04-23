@@ -391,6 +391,12 @@ Today's audit (Section 3 of the audit doc) found 1,555 zero-article FDs survived
 Files: `scripts/build_benchmark.py` `step_publish` (in-flight). Effort: S. Priority: P1. Deps: G2.
 Three invariants asserted post-copy: (a) line count of `forecasts.jsonl` does not decrease between source and destination; (b) every `article_id` referenced from `forecasts.jsonl` exists in the published `articles.jsonl`; (c) `benchmark.yaml` mentions every benchmark that contributes rows. Fail the publish on any violation.
 
+### G7. Earnings article-pool enrichment sources (2026-04-23) **Status**: SHIPPED
+Files: new `scripts/enrich_earnings_from_unified.py`, `scripts/enrich_earnings_from_edgar_fts.py`, `scripts/enrich_earnings_from_gdelt_gkg.py`, `scripts/enrich_earnings_from_editorial.py`. Effort: S. Priority: P1. Deps: none.
+Four standalone, idempotent, atomic-write enrichment passes layered on top of `data/earnings/earnings_articles.jsonl` to lift coverage on the v2.1 build that finished today (535 FDs, 296 baseline articles after Google-News + EDGAR + Finnhub).
+Sources implemented today (commits 6dad9ea, 4bf7607, 96956ac, plus the editorial run): unified-pool ticker match (66 records / 27 FDs), SEC EDGAR FTS for 10-Q/10-K/DEF 14A with CIK filter (936 records / 233 FDs), GDELT news-slug ticker match (619 records / 77 FDs; pivoted from V2Organizations because data_kg.csv is the pre-aggregated event table and data_news.csv has empty Title/Text), NYT + Guardian editorial ticker-aware queries.
+Notes for v2.2 follow-on: (a) the unified-pool source is throttled by the geopolitics-heavy pool composition; (b) GDELT slug matches are URL-only, so downstream Stage-1 ETD will need to fetch full text via trafilatura; (c) the EDGAR FTS path returns filings filtered by filer-CIK so noise from third-party mentions is excluded by construction; (d) the editorial source uses the existing NYT/Guardian API keys from `.env`.
+
 ### G6. `scripts/reuse_check.py` CLI for dry-audit of reuse **Status**: SHIPPED
 Files: new `scripts/reuse_check.py`. Effort: S. Priority: P2. Deps: G1.
 Reports which stages would be reused on a fresh build given the current cache state: `python scripts/reuse_check.py --cutoff 2026-01-01` prints a per-stage table of `reuse_key | cached? | last_invalidated | next_action`. No side effects. Useful for debugging "why did this stage rerun" questions.
