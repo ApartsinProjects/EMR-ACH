@@ -44,6 +44,7 @@ DEFAULT_MODEL = "text-embedding-3-small"
 DEFAULT_DIM = 1536          # text-embedding-3-small native; -large is 3072
 DEFAULT_CHUNK = 200         # items per sync request (well under 8192-input limit)
 DEFAULT_MAX_TOKENS_PER_BATCH_FILE = 4_000_000   # OpenAI batch file size cap
+DEFAULT_BATCH_REQUESTS_CAP = 50_000              # OpenAI per-batch maximum_requests cap
 
 
 def _normalize(v: np.ndarray) -> np.ndarray:
@@ -122,23 +123,41 @@ def encode_batch(texts: list[str], model: str = DEFAULT_MODEL,
                  work_dir: Path | None = None, client=None,
                  poll_interval_sec: int = 30,
                  timeout_sec: int = 24 * 3600) -> np.ndarray:
-    """Submit a single OpenAI Batch job for all `texts` and block until
-    completion. Returns L2-normalized float32 ndarray of shape (N, D).
+    """Submit OpenAI Batch job(s) for all `texts` and block until completion.
+    Returns L2-normalized float32 ndarray of shape (N, D).
 
-    Resume semantics: writes the request file + batch_id to `work_dir`.
-    A subsequent call with the same `work_dir` will re-poll the existing
-    batch_id rather than create a new one. Delete the work_dir to force
-    a fresh submission.
+    Auto-chunking: OpenAI caps each batch at DEFAULT_BATCH_REQUESTS_CAP
+    (50,000) requests. When `len(texts)` exceeds the cap, the input is
+    split into sequential sub-batches; each gets its own work_dir
+    suffix + state.json so any individual chunk can resume independently.
+    Results are concatenated in input order.
 
-    For pools larger than DEFAULT_MAX_TOKENS_PER_BATCH_FILE (~4M tokens),
-    callers should split the input into multiple chunks and call this
-    once per chunk; or use src.common.multibatch for parallel chunks.
+    Resume semantics: writes the request file + batch_id to `work_dir`
+    (or `work_dir / chunk_NN/` for chunked runs). A subsequent call with
+    the same `work_dir` will re-poll the existing batch_id rather than
+    create a new one. Delete the work_dir to force a fresh submission.
     """
     if client is None:
         from openai import OpenAI
         client = OpenAI()
     work_dir = work_dir or Path("data/etd_openai_batches") / model
     work_dir.mkdir(parents=True, exist_ok=True)
+
+    # Auto-chunk above the OpenAI per-batch cap
+    if len(texts) > DEFAULT_BATCH_REQUESTS_CAP:
+        cap = DEFAULT_BATCH_REQUESTS_CAP
+        n_chunks = (len(texts) + cap - 1) // cap
+        print(f"[encode_batch] N={len(texts)} > {cap}; splitting into {n_chunks} sequential sub-batches")
+        parts = []
+        for i in range(n_chunks):
+            chunk_texts = texts[i * cap : (i + 1) * cap]
+            chunk_dir = work_dir / f"chunk_{i:02d}"
+            print(f"[encode_batch]   chunk {i+1}/{n_chunks}: N={len(chunk_texts)} -> {chunk_dir}")
+            part = encode_batch(chunk_texts, model=model, work_dir=chunk_dir,
+                                client=client, poll_interval_sec=poll_interval_sec,
+                                timeout_sec=timeout_sec)
+            parts.append(part)
+        return np.vstack(parts)
 
     request_path = work_dir / "requests.jsonl"
     state_path = work_dir / "state.json"
