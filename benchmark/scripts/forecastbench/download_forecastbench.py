@@ -42,6 +42,25 @@ def is_geopolitics(q: dict) -> bool:
     return any(kw in text for kw in GEOPOLITICS_KEYWORDS)
 
 
+def _filter_all(q: dict) -> bool:
+    """v2.1 default: no subject filter, include every resolved FB question
+    (grows FB from ~530 geopolitics-only to ~1000-1500 all-subject FDs).
+    Set EMRACH_FB_SUBJECT_FILTER=geopolitics to restore the legacy filter."""
+    return True
+
+
+# Selectable subject filter, controlled by env var EMRACH_FB_SUBJECT_FILTER.
+# Default: "all" (no filter). Pass "geopolitics" for the legacy subset.
+import os as _os
+_SUBJECT_FILTER_MODE = _os.environ.get("EMRACH_FB_SUBJECT_FILTER", "all").lower()
+if _SUBJECT_FILTER_MODE == "geopolitics":
+    subject_filter = is_geopolitics
+    _FILTER_LABEL = "geopolitics"
+else:
+    subject_filter = _filter_all
+    _FILTER_LABEL = "all-subjects"
+
+
 def load_all() -> tuple[dict, dict]:
     q_dir = REPO / "question_sets"
     r_dir = REPO / "resolution_sets"
@@ -101,7 +120,7 @@ def build_dataset(all_questions: dict, all_resolutions: dict) -> list[dict]:
     skipped_not_geo = 0
 
     for qid, q in all_questions.items():
-        if not is_geopolitics(q):
+        if not subject_filter(q):
             skipped_not_geo += 1
             continue
 

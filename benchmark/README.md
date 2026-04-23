@@ -53,18 +53,28 @@ benchmark/
 ```bash
 pip install -r requirements.txt
 
-# Build for a given LLM training cutoff (one command drives the full pipeline):
-cd benchmark && python build.py --cutoff 2026-01-01
+# Build for a given LLM training cutoff (one command drives the full pipeline).
+# Run from the repo root:
+python scripts/build_benchmark.py --cutoff 2026-01-01
 ```
 
 Common flags:
 
 ```bash
-python build.py --cutoff 2026-01-01 --benchmarks forecastbench,earnings  # subset
-python build.py --cutoff 2026-01-01 --skip-raw                           # reuse raw caches
-python build.py --cutoff 2026-01-01 --fresh                              # wipe and rebuild
-python build.py --cutoff 2026-01-01 --dry-run                            # preview only
+python scripts/build_benchmark.py --cutoff 2026-01-01 --benchmarks forecastbench,earnings  # subset
+python scripts/build_benchmark.py --cutoff 2026-01-01 --skip-raw                           # reuse raw caches
+python scripts/build_benchmark.py --cutoff 2026-01-01 --fresh                              # wipe and rebuild
+python scripts/build_benchmark.py --cutoff 2026-01-01 --dry-run                            # preview only
+
+# Leakage-probe build (smaller 2024-Q1 window, GPT-4o-mini era):
+python scripts/build_benchmark.py --cutoff 2024-04-01 --config configs/leakage_probe_config.yaml
 ```
+
+Note: the orchestrator lives at `scripts/build_benchmark.py` (top-level). The
+`benchmark/build.py` shim that previously sat here was deprecated in v2.1
+because it pointed at a parallel `benchmark/scripts/` script tree that had
+drifted from the canonical top-level scripts. Output still lands in
+`benchmark/data/{cutoff}/` either way.
 
 ## Start here
 
