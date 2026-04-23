@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-04-23T14:52:48.545120Z",
+  "generated_at": "2026-04-23T15:23:04.604812Z",
   "kind": "gold_subset",
   "parent_cutoff": "2026-01-01",
   "parent_forecasts_sha256": "39a2ebf87f5413311a1f9b8f7978d638077a48da6713e5097eda34b106b91866",
-  "git_sha": "ce013172c46c737883c2088c04ad94b6b572254e",
+  "git_sha": "8ffba6fbe2c9a7bda42c12a6febd7d3021a575cf",
   "n_fds": 81,
   "n_articles": 690,
   "n_facts": 2107,

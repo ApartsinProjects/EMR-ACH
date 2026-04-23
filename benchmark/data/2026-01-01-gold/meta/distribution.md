@@ -24,7 +24,7 @@ Total FDs: **81**.  Total referenced articles: **690**.
 
 - Earliest: `2024-07-25`
 - Latest: `2026-04-11`
-- Distinct dates: 152
+- Distinct dates: 154
 
 ## Top 20 article source domains
 
@@ -35,18 +35,18 @@ Total FDs: **81**.  Total referenced articles: **690**.
 | `zazoom.it` | 7 |
 | `rri.ro` | 6 |
 | `n-tv.de` | 5 |
-| `bbc.com` | 4 |
-| `deadline.com` | 4 |
-| `sueddeutsche.de` | 4 |
 | `ahaber.com.tr` | 4 |
+| `sueddeutsche.de` | 4 |
 | `blisty.cz` | 4 |
-| `blog.wenxuecity.com` | 3 |
+| `deadline.com` | 4 |
+| `bbc.com` | 4 |
+| `aporrea.org` | 3 |
 | `english.news.cn` | 3 |
-| `abcnews.go.com` | 3 |
-| `variety.com` | 3 |
-| `torontosun.com` | 3 |
+| `billboard.com` | 3 |
 | `globalsecurity.org` | 3 |
-| `marketoracle.co.uk` | 3 |
-| `lrt.lt` | 3 |
-| `aol.co.uk` | 3 |
-| `ruthfullyyours.com` | 3 |
+| `abcnews.go.com` | 3 |
+| `forbes.com` | 3 |
+| `torontosun.com` | 3 |
+| `newsweek.com` | 3 |
+| `thewrap.com` | 3 |
+| `blog.wenxuecity.com` | 3 |
