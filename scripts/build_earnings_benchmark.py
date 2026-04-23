@@ -5,6 +5,12 @@ For each company in the ticker list, fetch quarterly earnings release metadata
 from Yahoo Finance (yfinance), compute the surprise class, and emit a
 Forecast Dossier record.
 
+v2.2 semantics: forecast_point = report_date - horizon_days (default 14).
+The forecaster predicts the earnings surprise class two weeks before the
+release. resolution_date stays == report_date. Horizon overridable via
+the EMRACH_HORIZON_DAYS env var (exported by scripts/build_benchmark.py
+from temporal.horizon_days) or the --horizon-days CLI flag.
+
 Hypothesis class (3-class): Beat / Meet / Miss
   Beat:  actual EPS >= consensus + |consensus| * threshold  (default 2%)
   Miss:  actual EPS <= consensus - |consensus| * threshold
@@ -23,6 +29,7 @@ Usage:
 import argparse
 import hashlib
 import json
+import os
 import sys
 import time
 from datetime import datetime, timedelta
@@ -80,8 +87,12 @@ def compute_hypothesis(actual: float, estimate: float, threshold: float) -> str:
 
 
 def fetch_ticker_earnings(ticker: str, start: datetime, end: datetime,
-                          threshold: float) -> list[dict]:
-    """Return list of FD records for the ticker's earnings in [start, end]."""
+                          threshold: float, horizon_days: int = 14) -> list[dict]:
+    """Return list of FD records for the ticker's earnings in [start, end].
+
+    horizon_days controls v2.2 forecast_point offset: forecast_point =
+    report_date - horizon_days (default 14).
+    """
     out = []
     try:
         t = yf.Ticker(ticker)
@@ -124,8 +135,11 @@ def fetch_ticker_earnings(ticker: str, start: datetime, end: datetime,
             if hyp is None:
                 continue
             surprise_pct = row.get("Surprise(%)") or row.get("Surprise %")
-            # forecast_point = one day before report (market close T-1)
-            fp = (report_dt - timedelta(days=1)).strftime("%Y-%m-%d")
+            # v2.2: forecast_point = report_date - horizon_days (default 14).
+            # horizon_days is injected via EMRACH_HORIZON_DAYS (set by
+            # scripts/build_benchmark.py) or overridable via --horizon-days.
+            # resolution_date stays == report_date.
+            fp = (report_dt - timedelta(days=horizon_days)).strftime("%Y-%m-%d")
             rd = report_dt.strftime("%Y-%m-%d")
             quarter = f"Q{((report_dt.month - 1) // 3) + 1}-{report_dt.year}"
             q_id = f"earn_{ticker}_{rd}"
@@ -146,7 +160,10 @@ def fetch_ticker_earnings(ticker: str, start: datetime, end: datetime,
                 "ground_truth": hyp,
                 "ground_truth_idx": HYP.index(hyp),
                 "crowd_probability": None,  # analyst consensus is in background, not a market probability
-                "lookback_days": 14,        # 2 weeks of pre-release news
+                # v2.2: lookback_days comes from EMRACH_LOOKBACK_DAYS env var
+                # (default 90). v2.1 shipped 14, which matched horizon=0 and
+                # is strictly narrower than the v2.2 90d retrieval window.
+                "lookback_days": int(os.environ.get("EMRACH_LOOKBACK_DAYS", "90")),
                 "article_ids": [],
                 "_earnings_meta": {
                     "ticker": ticker, "company": company_name,
@@ -170,7 +187,16 @@ def main():
     ap.add_argument("--threshold", type=float, default=0.02,
                     help="Beat/Miss threshold as fraction of consensus EPS (default 0.02 = 2%%)")
     ap.add_argument("--sleep", type=float, default=0.4, help="Per-ticker throttle")
+    ap.add_argument("--horizon-days", type=int, default=None,
+                    help="v2.2 forecast horizon: forecast_point = "
+                         "report_date - horizon_days (default 14, or "
+                         "EMRACH_HORIZON_DAYS env var).")
     args = ap.parse_args()
+    horizon_days = (args.horizon_days
+                    if args.horizon_days is not None
+                    else int(os.environ.get("EMRACH_HORIZON_DAYS", "14")))
+    print(f"[v2.2] forecast horizon = {horizon_days} days "
+          f"(forecast_point = report_date - {horizon_days}d)")
 
     tickers = [t.strip().upper() for t in args.tickers.split(",")] if args.tickers else DEFAULT_TICKERS
     try:
@@ -186,7 +212,8 @@ def main():
     all_fds = []
     failures = []
     for i, tk in enumerate(tickers, 1):
-        recs = fetch_ticker_earnings(tk, start_dt, end_dt, args.threshold)
+        recs = fetch_ticker_earnings(tk, start_dt, end_dt, args.threshold,
+                                     horizon_days=horizon_days)
         if not recs:
             failures.append(tk)
         all_fds.extend(recs)

@@ -1,11 +1,18 @@
 """Unify forecast records from all three benchmarks into a single Forecast Dossier.
 
 This script is the **producer** of the canonical FD record. The contract is
-defined in [`docs/FORECAST_DOSSIER.md`](../docs/FORECAST_DOSSIER.md) (v2.1) and
+defined in [`docs/FORECAST_DOSSIER.md`](../docs/FORECAST_DOSSIER.md) (v2.2) and
 the per-field reference at [`benchmark/schema/forecast_dossier.md`].
 Downstream consumers (annotate_prior_state, compute_relevance, quality_filter,
 baselines runner) treat the FD as immutable schema; any new field added here
 must be reflected in both schema docs and the JSON Schema validator.
+
+v2.2 semantics: forecast_point = resolution_date - horizon_days (default
+horizon 14). The evidence window is [forecast_point - lookback_days,
+forecast_point]; every article in article_ids MUST have publish_date <=
+forecast_point. v2.1 (published 2026-01-01) had horizon == 0 so
+forecast_point == resolution_date, effectively retrospective; v2.2 makes
+the task genuinely prospective.
 
 Reads (read-only):
   data/forecastbench_geopolitics.jsonl   ForecastBench binary questions
@@ -88,8 +95,10 @@ GDELT_CAMEO_HYP        = list(_GDC_INTENSITY)                  # ["Peace","Tensi
 GDELT_CAMEO_HYP_CODES  = ["P", "T", "V"]                       # compact labels
 GDELT_CAMEO_HYP_DEFS   = dict(_GDC_INTENSITY_DEFS)
 
-FB_LOOKBACK  = 90   # unified 'forecast from prior news' analysis window
-GDELT_CAMEO_LOOKBACK = 90   # matches FB + earnings for uniform task framing
+import os as _os_lookback
+_DEF_LOOKBACK = int(_os_lookback.environ.get("EMRACH_LOOKBACK_DAYS", "90"))
+FB_LOOKBACK  = _DEF_LOOKBACK   # unified 'forecast from prior news' analysis window
+GDELT_CAMEO_LOOKBACK = _DEF_LOOKBACK   # matches FB + earnings for uniform task framing
 
 # Forecast horizon h — evidence cutoff is resolution_date − h days.
 # Default 14 (2 weeks): the system's last permissible article is 2 weeks
@@ -157,12 +166,15 @@ def load_forecastbench(url2aid: dict[str, str]) -> list[dict]:
         gt = int(q.get("ground_truth", 0))
         gt_label = FB_HYP[0] if gt == 1 else FB_HYP[1]
         res_date = q.get("resolution_date", "")
-        # forecast_point stores the max-evidence-date (= resolution_date). The
-        # actual experimental cutoff is applied at runtime: the baseline runner
-        # filters article_ids to those with publish_date < (resolution_date −
-        # experiment_horizon_days). Default horizon is emitted into the FD as
-        # `default_horizon_days` (see v2.1 design, docs/FORECAST_DOSSIER.md §3).
-        forecast_point = res_date
+        # v2.2: forecast_point = resolution_date - horizon_days (default 14).
+        # The system is simulated to be asked the question 14 days before the
+        # market/crowd resolves. article_ids must all have publish_date <=
+        # forecast_point (leakage-filtered at fetch time).
+        try:
+            _res_dt = datetime.strptime(res_date, "%Y-%m-%d")
+            forecast_point = (_res_dt - timedelta(days=FB_FORECAST_HORIZON_DAYS)).strftime("%Y-%m-%d")
+        except Exception:
+            forecast_point = res_date
         urls = q2urls.get(qid, [])
         article_ids = sorted({url2aid[u] for u in urls if u in url2aid})
         out.append({
@@ -260,10 +272,15 @@ def load_gdelt_cameo(url2aid: dict[str, str]) -> list[dict]:
                         f"intensity of interaction between {s_name} and {o_name} "
                         f"on or around {date}: peace, tension, or violence?")
 
-            # forecast_point = resolution date (max evidence date). The
-            # experimental horizon filter is applied at runtime; default
-            # horizon is emitted below as `default_horizon_days`.
-            forecast_point_str = date
+            # v2.2: forecast_point = event_date - horizon_days (default 14).
+            # The forecaster must predict the event's conflict-intensity class
+            # using only news published at or before forecast_point. Preserves
+            # resolution_date (= event_date) verbatim on the FD.
+            try:
+                _ev_dt = datetime.strptime(date, "%Y-%m-%d")
+                forecast_point_str = (_ev_dt - timedelta(days=GDELT_FORECAST_HORIZON_DAYS)).strftime("%Y-%m-%d")
+            except Exception:
+                forecast_point_str = date
 
             out.append({
                 "id": f"gdc_{qid}",
