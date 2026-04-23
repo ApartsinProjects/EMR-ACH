@@ -48,7 +48,8 @@ REQUIRED_FIELDS = {
     "entities", "polarity", "extraction_confidence",
     "extractor", "extracted_at",
 }
-ENUM_POLARITY = {"asserted", "denied", "hypothetical"}
+# Mirror docs/etd.schema.json. Update both together if the enum changes.
+ENUM_POLARITY = {"asserted", "negated", "hypothetical", "reported"}
 ENUM_CONFIDENCE = {"high", "medium", "low"}
 
 

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://emr-ach/schema/article.json",
+  "title": "EMR-ACH Article Record",
+  "description": "Unified article record produced by scripts/unify_articles.py from any of the per-benchmark fetchers (NYT, Guardian, Google News, GDELT DOC, Finnhub, yfinance, SEC EDGAR, GDELT KG). One record per JSONL line.",
+  "type": "object",
+  "required": ["id", "url", "title", "text", "date", "source"],
+  "additionalProperties": true,
+  "properties": {
+    "id":         {"type": "string", "pattern": "^art_[0-9a-f]{12}$",
+                   "description": "Stable 12-hex content hash, prefixed `art_`."},
+    "url":        {"type": "string", "minLength": 1,
+                   "description": "Original article URL (post-canonicalization)."},
+    "title":      {"type": "string"},
+    "text":       {"type": "string",
+                   "description": "Trafilatura-extracted body text. May be empty for title-only fetches."},
+    "date":       {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                   "description": "ISO publish date (YYYY-MM-DD)."},
+    "source":     {"type": "string",
+                   "description": "Human-readable publisher (e.g. 'The New York Times', 'finance.yahoo.com')."},
+    "provenance": {"type": "string",
+                   "description": "Pipe-separated tags from each fetcher that produced this URL (e.g. 'gdelt-cameo|nyt'). Records reachable from multiple fetchers retain the union."},
+    "language":   {"type": "string",
+                   "description": "BCP-47 language tag, lowercased. 'und' if unknown."},
+    "summary":    {"type": "string",
+                   "description": "Optional one-sentence summary if produced upstream."},
+    "source_type": {"type": "string", "enum": ["news", "filing", "social", "blog", "other"],
+                    "description": "Coarse channel taxonomy. 'filing' marks SEC EDGAR records that should be down-weighted vs editorial news in evidence aggregation."}
+  }
+}

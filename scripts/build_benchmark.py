@@ -313,6 +313,46 @@ def step_eda(dry_run: bool) -> None:
     run_cmd([PY, str(SCRIPTS / "build_eda_report.py")], dry_run=dry_run)
 
 
+def step_pool_audits(dry_run: bool) -> None:
+    """Run the pool-level audits that complement build_eda_report.py:
+      * articles_audit.py: spam survivors, near-dupes, source/length mix
+      * fd_audit.py:       v2.1 schema integrity, Comply/Surprise balance,
+                           fd_type partition consistency, prior-state coverage
+    Both are CPU-only and idempotent. Reports land at
+    data/unified/audit/{articles_audit.md, fd_audit.md}.
+    """
+    run_cmd([PY, str(SCRIPTS / "articles_audit.py")], dry_run=dry_run)
+    run_cmd([PY, str(SCRIPTS / "fd_audit.py")], dry_run=dry_run)
+
+
+def _sha256(path: Path) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def step_checksums(dest: Path, dry_run: bool) -> None:
+    """Emit SHA256 sidecars for the two primary deliverables. Lets a
+    consumer verify they have the exact same bytes the build produced
+    without trusting the surrounding manifest."""
+    if dry_run:
+        log("[checksums] (dry-run)")
+        return
+    out = dest / "checksums.sha256"
+    lines = []
+    for name in ("forecasts.jsonl", "articles.jsonl"):
+        p = dest / name
+        if p.exists():
+            lines.append(f"{_sha256(p)}  {name}")
+    if not lines:
+        return
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    log(f"[checksums] wrote {out}")
+
+
 def step_publish(cutoff: str, output_root: Path, dry_run: bool) -> Path:
     """Publish two SEPARATE folder hierarchies:
 
@@ -639,17 +679,19 @@ def main():
             step_relink_gdelt(True, args.dry_run)
         snapshot("07_after_re_relevance_and_relink", args.dry_run)
 
-    # 5. Quality filter + diagnostic + EDA
+    # 5. Quality filter + diagnostic + EDA + pool audits
     step_quality(cutoff, buffer_days, cfg.get("quality", {}), args.dry_run)
     snapshot("08_after_quality_filter", args.dry_run)
     step_diagnostic(args.dry_run)
     step_eda(args.dry_run)
+    step_pool_audits(args.dry_run)
     snapshot("09_final_before_publish", args.dry_run)
 
-    # 6. Publish to {output_root}/{cutoff}/
+    # 6. Publish to {output_root}/{cutoff}/  (+ SHA256 sidecar)
     dest = step_publish(cutoff, output_root, args.dry_run)
     if not args.dry_run:
         write_run_manifest(dest, cfg, cutoff, chosen, effective_cfg=cfg)
+        step_checksums(dest, args.dry_run)
 
     # 7. Optional staging cleanup (Fix #6)
     if not args.dry_run:
