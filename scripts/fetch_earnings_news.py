@@ -48,6 +48,12 @@ from urllib.parse import urlparse
 
 import requests
 
+# Ensure ACH root is on sys.path so `from src.common...` resolves when this
+# script is invoked directly (e.g. from build_benchmark subprocess).
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).parent.parent))
+
 from src.common.optional_imports import optional  # noqa: E402
 
 yf = optional("yfinance")           # only needed for the yfinance source
