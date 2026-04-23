@@ -518,6 +518,13 @@ def main():
                          "Default: all enabled in config.")
     ap.add_argument("--skip-raw", action="store_true",
                     help="Skip raw-data rebuild (use when intermediate files already exist)")
+    ap.add_argument("--skip-news-fetch", action="store_true",
+                    help="Skip the step_multi_source_news() stage entirely. Use when "
+                         "the per-benchmark news fetchers (fetch_*_news.py) have "
+                         "already populated data/{forecastbench,gdelt_cameo,earnings}/ "
+                         "from prior runs (cached). The pipeline proceeds straight to "
+                         "annotate_prior_state + relevance using whatever articles are "
+                         "currently in the unified pool.")
     ap.add_argument("--rebuild-embeddings", action="store_true",
                     help="Pass --rebuild to compute_relevance.py (re-embeds all articles)")
     ap.add_argument("--dry-run", action="store_true",
@@ -629,10 +636,14 @@ def main():
     #     NYT + Guardian + Google News + GDELT DOC + Finnhub (earnings).
     #     Populates data/{forecastbench,gdelt_cameo,earnings}/*_articles.jsonl
     #     for all three benchmarks. Idempotent via --skip-completed.
-    step_multi_source_news(cfg.get("benchmarks", {}), args.dry_run)
-    # Re-unify so the newly fetched articles enter the unified article pool.
-    step_unify(args.dry_run)
-    snapshot("01b_after_multi_source_news", args.dry_run)
+    if args.skip_news_fetch:
+        log("--skip-news-fetch: skipping step_multi_source_news; using whatever "
+            "articles are already in data/{forecastbench,gdelt_cameo,earnings}/")
+    else:
+        step_multi_source_news(cfg.get("benchmarks", {}), args.dry_run)
+        # Re-unify so the newly fetched articles enter the unified article pool.
+        step_unify(args.dry_run)
+        snapshot("01b_after_multi_source_news", args.dry_run)
 
     # 2c. Annotate FDs with prior-state + stability/change partition across
     #     all benchmarks. Required for the headline "change" subset metrics:

@@ -235,12 +235,17 @@ def annotate_earnings(forecasts: list[dict], quarters: int) -> dict:
     Data source: other earnings FDs in the forecasts list with same ticker
     and earlier forecast_point (earnings_forecasts.jsonl retains all quarters).
     """
-    # Group FDs by ticker, sorted by forecast_point
+    # Group FDs by ticker, sorted by forecast_point.
+    # Earnings FDs store ticker under `_earnings_meta`, NOT `metadata`. The
+    # earlier `metadata` lookup silently bucketed every FD under "?", which
+    # collapsed all 535 records into one ticker group and gave nonsense
+    # prior states. Read the right key here.
     by_ticker: dict[str, list[dict]] = defaultdict(list)
     for fc in forecasts:
         if fc.get("benchmark") != "earnings":
             continue
-        by_ticker.setdefault(fc.get("metadata", {}).get("ticker", "?"), []).append(fc)
+        ticker = fc.get("_earnings_meta", {}).get("ticker", "?")
+        by_ticker.setdefault(ticker, []).append(fc)
     for tk, lst in by_ticker.items():
         lst.sort(key=lambda f: f.get("forecast_point", ""))
 
@@ -250,9 +255,16 @@ def annotate_earnings(forecasts: list[dict], quarters: int) -> dict:
     n_no_prior = 0
 
     for tk, lst in by_ticker.items():
+        # Snapshot every FD's ORIGINAL multiclass ground_truth (Beat/Meet/Miss)
+        # BEFORE any promotion in this ticker's loop runs. Without the
+        # snapshot, the i-th iteration would read post-promotion values
+        # ("Comply"/"Surprise") for FDs 0..i-1 (which `_promote_to_binary`
+        # rewrote in earlier iterations), giving a meaningless prior_state.
+        original_gt = [f.get("ground_truth") for f in lst]
         for i, fc in enumerate(lst):
             n_touched += 1
-            history = [h.get("ground_truth") for h in lst[max(0, i - quarters): i] if h.get("ground_truth")]
+            history = [original_gt[j] for j in range(max(0, i - quarters), i)
+                       if original_gt[j]]
             if not history:
                 fc["prior_state_30d"] = None; fc["prior_state_stability"] = 0.0
                 fc["fd_type"] = "unknown"; slice_counter["unknown"] += 1; n_no_prior += 1
@@ -263,10 +275,8 @@ def annotate_earnings(forecasts: list[dict], quarters: int) -> dict:
             fc["prior_state_30d"] = mode_cls
             fc["prior_state_stability"] = round(stability, 4)
             fc["prior_state_n_events"] = len(history)
-            if mode_cls == fc.get("ground_truth"):
-                fd_type = "stability"
-            else:
-                fd_type = "change"
+            current_gt = original_gt[i]
+            fd_type = "stability" if mode_cls == current_gt else "change"
             fc["fd_type"] = fd_type
             slice_counter[fd_type] += 1
             prior_counter[mode_cls] += 1
