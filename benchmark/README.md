@@ -70,6 +70,31 @@ python scripts/build_benchmark.py --cutoff 2026-01-01 --dry-run                 
 python scripts/build_benchmark.py --cutoff 2024-04-01 --config configs/leakage_probe_config.yaml
 ```
 
+### v2.2 flags (in flight)
+
+The v2.2 rollout adds an OpenAI-embedder family and a news-fetch skip flag.
+v2.1 today defaults to SBERT (`all-MiniLM-L6-v2`) and to the per-FD GDELT DOC
+fetch; v2.2 defaults to the OpenAI embedder and prefers the bulk DOC archive
++ index when one is available (see `docs/V2_2_ARCHITECTURE.md`).
+
+```bash
+# v2.1 today (SBERT, per-FD GDELT DOC fetch):
+python scripts/build_benchmark.py --cutoff 2026-01-01 --embedder sbert
+
+# v2.2 planned (OpenAI embeddings, reuse pre-fetched news archives):
+python scripts/build_benchmark.py --cutoff 2026-01-01 \
+    --embedder openai \
+    --openai-model text-embedding-3-small \
+    --openai-mode batch \
+    --skip-news-fetch
+```
+
+`--embedder {sbert,openai}` selects the embeddings backend.
+`--openai-model` and `--openai-mode {sync,batch}` configure the OpenAI path
+(see `src/common/openai_embeddings.py`). `--skip-news-fetch` reuses the
+already-downloaded CC-News and GDELT DOC archives without re-hitting the
+upstream APIs (companion to the existing `--skip-raw`).
+
 Note: the orchestrator lives at `scripts/build_benchmark.py` (top-level). The
 `benchmark/build.py` shim that previously sat here was deprecated in v2.1
 because it pointed at a parallel `benchmark/scripts/` script tree that had
