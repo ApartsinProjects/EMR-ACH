@@ -95,7 +95,7 @@ caption{caption-side:bottom;font-size:9pt;color:var(--cap);
   Selecting the correct hypothesis from a candidate set, given a question and a corpus of news articles, is the core operation behind many applied forecasting tasks: geopolitical event categorization, earnings outcomes, prediction-market resolutions, medical differentials. LLMs approach this as implicit hypothesis evaluation in a single generation, weighing competing explanations without enforcing systematic evidence comparison. We argue this is the wrong granularity. Structured analytical methods from the intelligence community, in particular <em>Analysis of Competing Hypotheses</em> (ACH), were designed to decompose multi-hypothesis comparison into ordered, auditable steps with explicit evidence tracking.
 </p>
 <p>
-  We formalize ACH as an evidence matrix inference problem and instantiate it with LLMs, yielding an inference-only pipeline we call <strong>EMR-ACH</strong> (Evidence Matrix Reasoning). Forecasting is represented as two matrices: an <em>analysis matrix</em> $A$ encoding how strongly each retrieved article manifests each early-warning indicator, and an <em>influence matrix</em> $I$ encoding how each indicator bears on each candidate hypothesis. The score for hypothesis $h$ is $\text{Score}(h) = \sum_i \sum_j d_j \cdot A_{ij} \cdot I_{jh}$, with $d_j$ a diagnosticity weight that up-weights indicators that discriminate between hypotheses. The final output is $\hat{h} = \arg\max_h \text{Score}(h)$ — a single pick, no distribution. A multi-agent adversarial variant assigns one advocate agent per hypothesis and uses a judge agent to choose the winning label.
+  We formalize ACH as an evidence matrix inference problem and instantiate it with LLMs, yielding an inference-only pipeline we call <strong>EMR-ACH</strong> (Evidence Matrix Reasoning). Forecasting is represented as two matrices: an <em>analysis matrix</em> $A$ encoding how strongly each retrieved article manifests each early-warning indicator, and an <em>influence matrix</em> $I$ encoding how each indicator bears on each candidate hypothesis. The score for hypothesis $h$ is $\text{Score}(h) = \sum_i \sum_j d_j \cdot A_{ij} \cdot I_{jh}$, with $d_j$ a diagnosticity weight that up-weights indicators that discriminate between hypotheses. The final output is $\hat{h} = \arg\max_h \text{Score}(h)$, a single pick, no distribution. A multi-agent adversarial variant assigns one advocate agent per hypothesis and uses a judge agent to choose the winning label.
 </p>
 <p>
   We evaluate on three benchmarks, unified under a common Forecast Dossier (FD) schema and a single "forecast event outcome from prior news" task framing. <strong>ForecastBench</strong> supplies binary Yes/No prediction-market questions. <strong>GDELT-CAMEO</strong> supplies country-pair event questions labelled by a 3-class <em>intensity</em> taxonomy (Peace / Tension / Violence, derived from CAMEO root codes 01-09 / 10-17 / 18-20); GDELT is the question channel only, while the evidence channel is independent editorial news (NYT, Guardian, Google News), so ground-truth and retrieval are information-theoretically decoupled. <strong>Earnings</strong> supplies quarterly EPS forecasts against analyst consensus with Beat / Meet / Miss outcomes. All data is leakage-guarded both at the article level (publish date &lt; forecast point) and at the model-cutoff level (resolution date &gt; training cutoff + buffer). Every FD carries a <strong>prior-state</strong> annotation (modal prior-30d intensity for GDELT; mode of prior 4 quarters for earnings; crowd probability for ForecastBench), which partitions FDs into <em>stability</em> (ground truth matches prior state; trivially predictable status-quo) and <em>change</em> (forecasting skill required). Headline metrics are reported on the Change subset. Every baseline in the comparison (Direct, CoT, RAG, Self-Consistency, Multi-Agent Debate, Tree-of-Thoughts, Reflexion, LLM Ensemble) returns a single hypothesis pick under identical retrieval and model conditions. Reported metrics are accuracy, balanced accuracy, normalized balanced accuracy (K-invariant), macro-F1, Matthews correlation coefficient, and per-class recall, each with stratified bootstrap 95% confidence intervals. Every benchmark also reports <em>majority-class</em> and <em>random</em> reference baselines; systems that do not beat majority-class accuracy are reported as having no selection skill. <strong>Full results pending completion of the Phase-3 run.</strong>
@@ -126,12 +126,12 @@ caption{caption-side:bottom;font-size:9pt;color:var(--cap);
 
 <ul>
   <li><strong>Diagnostic evidence weighting.</strong> ACH theory holds that diagnostic evidence (inconsistent with all but one hypothesis) is more valuable than uninformative evidence. We formalize this as a per-indicator weight $d_j$ = variance of the indicator's influence row, and show it improves selection accuracy by amplifying discriminating signals.</li>
-  <li><strong>Contrastive indicator generation.</strong> For each pair of hypotheses $(h_a, h_b)$, the LLM generates indicators that maximally distinguish them — guaranteeing pairwise coverage and steering the system toward high-$d_j$ signals.</li>
+  <li><strong>Contrastive indicator generation.</strong> For each pair of hypotheses $(h_a, h_b)$, the LLM generates indicators that maximally distinguish them, guaranteeing pairwise coverage and steering the system toward high-$d_j$ signals.</li>
   <li><strong>Multi-agent adversarial ACH.</strong> We assign one advocate agent per hypothesis; each agent argues for its hypothesis from the retrieved evidence. A judge agent reads all arguments and picks the winning label. This operationalizes ACH's spirit of systematic hypothesis competition.</li>
 </ul>
 
 <p>
-  We evaluate on three complementary benchmarks unified under a common Forecast Dossier (FD) schema: <strong>ForecastBench</strong> [4] binary prediction-market questions, <strong>GDELT-CAMEO Geopolitics</strong> — a country-pair event-intensity benchmark built from scratch on the public GDELT 2.0 Knowledge Graph (MIRAI [3] is prior work on the same data source and is compared as an external anchor only; our target, horizon, retrieval, and evaluation protocol all differ — see §2.1), and an <strong>Earnings</strong> three-class Beat/Meet/Miss benchmark over the S&amp;P 500. Every system returns a single hypothesis label; every benchmark also carries a <em>majority-class</em> reference so any claim of selection skill is measured against the trivial baseline that simply predicts the most frequent class.
+  We evaluate on three complementary benchmarks unified under a common Forecast Dossier (FD) schema: <strong>ForecastBench</strong> [4] binary prediction-market questions, <strong>GDELT-CAMEO Geopolitics</strong>, a country-pair event-intensity benchmark built from scratch on the public GDELT 2.0 Knowledge Graph (MIRAI [3] is prior work on the same data source and is compared as an external anchor only; our target, horizon, retrieval, and evaluation protocol all differ; see §2.1), and an <strong>Earnings</strong> three-class Beat/Meet/Miss benchmark over the S&amp;P 500. Every system returns a single hypothesis label; every benchmark also carries a <em>majority-class</em> reference so any claim of selection skill is measured against the trivial baseline that simply predicts the most frequent class.
 </p>
 
 <p>
@@ -139,11 +139,11 @@ caption{caption-side:bottom;font-size:9pt;color:var(--cap);
 </p>
 
 <ul>
-  <li><strong>C1: EMR-ACH for pick-only forecasting.</strong> An inference-only (no fine-tuning) ACH formalization as evidence-matrix aggregation + argmax, applicable to any benchmark expressible in the FD schema.</li>
-  <li><strong>C2: Diagnostic evidence weighting.</strong> A variance-based mechanism that up-weights hypothesis-discriminating indicators. To our knowledge, not present in any prior ACH-inspired LLM system.</li>
-  <li><strong>C3: Contrastive indicator generation.</strong> A prompting strategy that produces pairwise-discriminating indicators directly, yielding more usable diagnostic power per indicator than generic enumeration.</li>
-  <li><strong>C4: Multi-agent adversarial ACH.</strong> An advocate-plus-judge debate variant over the FD. We characterize the cost-accuracy trade-off and identify a Pareto-optimal agent count.</li>
-  <li><strong>C5: Cross-domain evaluation.</strong> The first evaluation of a structured ACH LLM pipeline across three heterogeneous forecasting domains (geopolitics, prediction markets, earnings) under a unified, leakage-guarded benchmark protocol.</li>
+  <li><strong>C1: The Forecast Dossier (FD) benchmark.</strong> A reusable, multi-domain forecasting evaluation suite (geopolitics, prediction markets, S&amp;P 500 earnings) unified under a single FD schema and a single binary primary target, <strong>Comply vs. Surprise</strong> (does the domain-appropriate status-quo expectation hold or break?). The benchmark is constructed to be (i) <em>leakage-free</em> by four independent mechanisms (article-level temporal cutoff, model-cutoff buffer, evidence-channel isolation between retrieval and label sources (GDELT-CAMEO only, where the label source would otherwise also be the retrieval source), and a configurable Forecast Horizon that holds out the final $h$ days before resolution); (ii) <em>diverse</em>, fusing heterogeneous domains, hypothesis cardinalities (binary / 3-class / 3-class), and evidence channels (editorial news, SEC filings, GDELT events, market metadata) under one record contract; (iii) <em>repeatable</em> via a single-command build (<code>scripts/build_benchmark.py --cutoff YYYY-MM-DD</code>) that ships the effective config, git SHA, and per-stage drop-reason audits with every release; (iv) <em>preprocessed</em>, with SBERT-scored evidence retrieval, quality-filter pruning, prior-state stratification (<code>fd_type ∈ {stability, change}</code>) and an optional atomic-fact ETD layer (LLM-extracted, SBERT-deduped, FD-linked), so consumers can run baselines on a single deliverable without re-executing the pipeline. We release two cutoffs, a primary 2026-01-01 build and a smaller 2024-04-01 leakage-probe build, to enable anti-pretraining-leakage controls.</li>
+  <li><strong>C2: EMR-ACH for pick-only forecasting.</strong> An inference-only (no fine-tuning) ACH formalization as evidence-matrix aggregation + argmax, applicable to any benchmark expressible in the FD schema.</li>
+  <li><strong>C3: Diagnostic evidence weighting.</strong> A variance-based mechanism that up-weights hypothesis-discriminating indicators. To our knowledge, not present in any prior ACH-inspired LLM system.</li>
+  <li><strong>C4: Contrastive indicator generation.</strong> A prompting strategy that produces pairwise-discriminating indicators directly, yielding more usable diagnostic power per indicator than generic enumeration.</li>
+  <li><strong>C5: Multi-agent adversarial ACH.</strong> An advocate-plus-judge debate variant over the FD. We characterize the cost-accuracy trade-off and identify a Pareto-optimal agent count.</li>
 </ul>
 
 <figure>
@@ -162,14 +162,14 @@ caption{caption-side:bottom;font-size:9pt;color:var(--cap);
 </p>
 <ol>
   <li><strong>Variable-horizon evaluation.</strong> MIRAI fixes <em>forecast_point</em> at November 1 and labels events throughout the entire test month, so the effective prediction horizon ranges from 0 days (Nov 1 events — essentially nowcasting) to ~30 days (late-November events). Reported F1 is the mix, making it impossible to separate nowcasting competence from true forecasting skill. EMR-ACH applies a <strong>fixed 14-day forecast horizon</strong> per FD (configurable; see §5.6), guaranteeing that every evaluated prediction is made with at least a two-week evidence embargo.</li>
-  <li><strong>No expectation baseline.</strong> MIRAI evaluates on the raw quad label directly, so trivially-predicted "stability" FDs (already-violent pairs predicted to stay violent; already-peaceful pairs predicted to stay peaceful) dominate the easy-base-rate cases and dilute the headline. Forecasting skill — the thing the benchmark should reward — is only meaningfully tested when the outcome breaks the status-quo expectation. EMR-ACH's <strong>Comply vs Surprise</strong> binary primary target (§3.4) makes this explicit and reports headline numbers on the Change subset where prior expectation fails.</li>
-  <li><strong>Low-distinguishability classes.</strong> MIRAI's quad-class target (VC / MC / VK / MK) has two semantically-close pairs that even competent LLMs confuse systematically: Verbal Cooperation vs. Material Cooperation, and Verbal Conflict vs. Material Conflict. In our pilot experiments, gpt-4o-mini collapses 76% of Verbal Cooperation FDs onto Material Cooperation regardless of article evidence. EMR-ACH's GDELT-CAMEO label is a <strong>3-class ordinal intensity</strong> (Peace / Tension / Violence) mapped directly from CAMEO root codes (§3.5); class boundaries are interpretable to both humans and LLMs, and baselines make sensible predictions without the confusable-pair collapse.</li>
+  <li><strong>No expectation baseline.</strong> MIRAI evaluates on the raw quad label directly, so trivially-predicted "stability" FDs (already-violent pairs predicted to stay violent, already-peaceful pairs predicted to stay peaceful) dominate the easy-base-rate cases and dilute the headline. Forecasting skill, the thing the benchmark should reward, is only meaningfully tested when the outcome breaks the status-quo expectation. EMR-ACH's <strong>Comply vs Surprise</strong> binary primary target (§3.2) makes this explicit and reports headline numbers on the change subset where prior expectation fails.</li>
+  <li><strong>Low-distinguishability classes.</strong> MIRAI's quad-class target (VC / MC / VK / MK) has two semantically-close pairs that even competent LLMs confuse systematically: Verbal Cooperation vs. Material Cooperation, and Verbal Conflict vs. Material Conflict. In our pilot experiments, gpt-4o-mini collapses 76% of Verbal Cooperation FDs onto Material Cooperation regardless of article evidence. EMR-ACH's GDELT-CAMEO label is a <strong>3-class ordinal intensity</strong> (Peace / Tension / Violence) mapped directly from CAMEO root codes (§3.3, Table 5); class boundaries are interpretable to both humans and LLMs, and baselines make sensible predictions without the confusable-pair collapse.</li>
 </ol>
 <p>
   Tang et al. [28] attack a similar problem with iterative news-grounded reasoning, and Xie et al. [27] build a multi-stage news-to-forecast pipeline. Abolghasemi et al. [16] introduce ThinkTank-ME, a domain-specialized fine-tuned expert model for Middle East forecasting. EMR-ACH differs fundamentally from all of these: no fine-tuning, uniform task across three heterogeneous domains (geopolitics, finance, prediction markets), explicit horizon + Comply/Surprise primary target, and evidence-matrix aggregation rather than free-form reasoning.
 </p>
 <p>
-  A second line of work targets <em>market-calibrated</em> prediction where human crowd forecasts are available. ForecastBench [4] provides a dynamic benchmark of ~1,000 continuously-updated questions from Metaculus, Manifold, Polymarket, Infer, plus algorithmic sources. Halawi et al. [5] reach near human-level performance via aggressive retrieval, news summarization, and ensembling. Schoenegger et al. [20] run a Metaculus-style tournament and find LLMs systematically overconfident. We use ForecastBench's prediction-market subset as one of three evaluation benchmarks, treating each question as a binary Yes/No selection task — we do not compare against crowd probabilities on a calibration axis, since our system emits a single pick.
+  A second line of work targets <em>market-calibrated</em> prediction where human crowd forecasts are available. ForecastBench [4] provides a dynamic benchmark of ~1,000 continuously-updated questions from Metaculus, Manifold, Polymarket, Infer, plus algorithmic sources. Halawi et al. [5] reach near human-level performance via aggressive retrieval, news summarization, and ensembling. Schoenegger et al. [20] run a Metaculus-style tournament and find LLMs systematically overconfident. We use ForecastBench's prediction-market subset as one of three evaluation benchmarks, treating each question as a binary Yes/No selection task; we do not compare against crowd probabilities on a calibration axis, since our system emits a single pick.
 </p>
 
 <h3>2.2 Structured Reasoning Paradigms for LLMs</h3>
@@ -222,39 +222,72 @@ $$
   The pipeline reads an FD and writes back a selected hypothesis $\hat{h} \in \mathcal{H}$, along with the intermediate matrices $A, I$ for auditing. The FD abstraction makes the pipeline source-agnostic: the same reasoning code runs on every benchmark below.
 </p>
 
-<h3>3.2 Benchmark Instantiations</h3>
+<h3>3.2 Comply vs. Surprise: a Unified Primary Target</h3>
+<p>
+  A naive multiclass evaluation on heterogeneous benchmarks confounds two very different sources of correctness. Consider a country-pair that has been at <em>Tension</em> for thirty consecutive days, or an S&amp;P 500 issuer that has beaten consensus in twelve of the last sixteen quarters. Calling these correctly is an exercise in <em>persistence</em>; the model needs no evidence and no reasoning, only the prior. The opposite cases (the day a long peace gives way to violence, the quarter a chronic beater finally misses) are where forecasting skill actually has to be expressed. A headline accuracy that mixes the two strata over-rewards trivial persistence and under-rewards the cases that motivate the benchmark.
+</p>
+<p>
+  We therefore promote every FD to a binary primary target uniformly across all three domains:
+</p>
+$$
+y_{\text{primary}} \;=\;
+\begin{cases}
+\textsf{Comply}   & \text{if } y \;=\; \text{prior\_state}(q),\\[2pt]
+\textsf{Surprise} & \text{if } y \;\neq\; \text{prior\_state}(q),
+\end{cases}
+\qquad
+\mathcal{H}_{\text{primary}} \;=\; \{\textsf{Comply},\; \textsf{Surprise}\}.
+$$
+<p>
+  The original domain-multiclass label $y \in \mathcal{H}$ is preserved on the FD as <code>x_multiclass_ground_truth</code> for ablation; it is the secondary target. The prior-state oracle $\text{prior\_state}(q)$ is computed at construction time from data strictly available before $t^{*}$, using a domain-appropriate heuristic:
+</p>
+<ul style="margin-top:-4px;">
+  <li><strong>GDELT-CAMEO:</strong> $\text{prior\_state}(q)$ is the <em>modal</em> 3-class intensity (Peace / Tension / Violence) over the prior $30$ days for the bilateral country pair, drawn from the same GDELT KG that supplies the label.</li>
+  <li><strong>Earnings:</strong> $\text{prior\_state}(q)$ is the <em>mode</em> of the issuer's prior four quarters' Beat/Meet/Miss surprise classes, drawn from <code>yfinance</code> historical earnings.</li>
+  <li><strong>ForecastBench:</strong> $\text{prior\_state}(q)$ is derived from the market's freeze-time crowd probability $\hat p$: <em>Yes</em> if $\hat p \geq 0.5$, else <em>No</em>. This makes the binary primary target precisely "did the resolved outcome agree with the crowd's majority direction?", a form of crowd-disagreement test.</li>
+</ul>
+<p>
+  Each FD carries a partition tag $\text{fd\_type} \in \{\textsf{stability}, \textsf{change}, \textsf{unknown}\}$: <em>stability</em> when $y_{\text{primary}} = \textsf{Comply}$, <em>change</em> when $y_{\text{primary}} = \textsf{Surprise}$, and <em>unknown</em> when the prior-state oracle is undefined (insufficient history). All headline metrics are reported on the change subset; the stability subset is reported separately as the persistence floor. Under this design, a system that always predicts $\textsf{Comply}$ scores high on stability (where it is correct by construction) and at chance on change, making the change-subset score a clean test of whether the system has read evidence at all. The Comply/Surprise framing is the reason the FD benchmark can sustain a single headline number across geopolitics, finance, and prediction markets without privileging the easiest cases.
+</p>
+
+<h3>3.3 Benchmark Instantiations</h3>
 
 <p>
   Each benchmark used in this paper instantiates the FD by filling in the slots above:
 </p>
 
 <table>
-  <caption>Table 5. FD slot instantiation by benchmark.</caption>
+  <caption>Table 5. FD slot instantiation by benchmark, with v2.1 prior-state and primary-target rows.</caption>
   <tr>
     <th>Slot</th><th>ForecastBench</th><th>GDELT-CAMEO</th><th>Earnings</th>
   </tr>
   <tr><td>$q$</td><td>NL market question + background</td><td>$(t, s, ?, o)$ country-pair triple</td><td>"Will {ticker} {beat/meet/miss} EPS on {date}?"</td></tr>
-  <tr><td>$\mathcal{H}$</td><td>$\{\text{Yes, No}\}$</td><td>$\{\text{Peace, Tension, Violence}\}$ (CAMEO 3-class ordinal)</td><td>$\{\text{Beat, Meet, Miss}\}$</td></tr>
+  <tr><td>$\mathcal{H}_{\text{multiclass}}$ (secondary)</td><td>$\{\text{Yes, No}\}$</td><td>$\{\text{Peace, Tension, Violence}\}$ (CAMEO 3-class ordinal)</td><td>$\{\text{Beat, Meet, Miss}\}$</td></tr>
+  <tr><td>$\text{prior\_state}(q)$</td><td>crowd majority: Yes if $\hat p \geq 0.5$ else No</td><td>modal 3-class intensity over prior $30$ days for $(s,o)$</td><td>mode of prior $4$ quarters' Beat/Meet/Miss</td></tr>
+  <tr><td>$\mathcal{H}_{\text{primary}}$ (Comply/Surprise)</td><td colspan="3" style="text-align:center;">$\{\textsf{Comply}, \textsf{Surprise}\}$ (uniform across all three domains)</td></tr>
   <tr><td>$t^{*}$</td><td>market freeze date</td><td>first day of test month</td><td>day before earnings call</td></tr>
   <tr><td>$T$</td><td>30 days pre-freeze</td><td>90 days pre-test</td><td>30 days pre-call</td></tr>
-  <tr><td>$\mathcal{D}_{q,t^{*},T}$</td><td>SBERT-scored + date-filtered news pool; top-10</td><td>GDELT KG oracle articles matching actors $(s,o)$, dated &lt; $t^{*}$</td><td>SBERT-scored news pool on ticker + macro; top-10</td></tr>
-  <tr><td>$y$</td><td>binary resolution (Yes/No)</td><td>CAMEO root code of the resolved event(s)</td><td>Beat / Meet / Miss (reported EPS vs. consensus)</td></tr>
+  <tr><td>$\mathcal{D}_{q,t^{*},T}$</td><td>SBERT-scored + date-filtered news pool; top-10</td><td>Editorial news (NYT, Guardian, Google), GDELT-KG-derived actor-pair retrieval; top-10</td><td>5-source cascade (SEC EDGAR 8-K filings, Finnhub, yfinance, Google News, GDELT DOC); top-10</td></tr>
+  <tr><td>$y$</td><td>binary resolution (Yes/No)</td><td>3-class intensity from CAMEO root code(s)</td><td>Beat / Meet / Miss (reported EPS vs. consensus)</td></tr>
 </table>
 
 <p>
-  Under this abstraction, no single benchmark is special to the method; each is one instantiation. Extending to a further benchmark (e.g., medical differentials) requires only a new row in Table 5 and a source-specific relevance function.
+  Under this abstraction, no single benchmark is special to the method; each is one instantiation. Extending to a further benchmark (e.g., medical differentials) requires only a new row in Table 5 and a source-specific relevance + prior-state function.
 </p>
 
-<h3>3.3 Evaluation Metrics</h3>
+<h3>3.4 Evaluation Metrics</h3>
 <p>
-  All systems emit a single predicted hypothesis $\hat{h}_i \in \mathcal{H}$ for each FD $i$. We report, per system × benchmark cell:
+  All systems emit a single predicted hypothesis $\hat{h}_i \in \mathcal{H}$ for each FD $i$. We report, per system × benchmark × <code>fd_type</code> subset cell:
 </p>
 <ul>
   <li><strong>Accuracy:</strong> $\text{Acc} = \frac{1}{N}\sum_i \mathbf{1}[\hat{h}_i = y_i]$</li>
   <li><strong>Macro-F1:</strong> mean of per-class F1 across $|\mathcal{H}|$ classes (robust to class imbalance)</li>
+  <li><strong>Balanced Accuracy (BalAcc):</strong> mean of per-class recall, $\text{BalAcc} = \frac{1}{K}\sum_{c} \text{Rec}_c$</li>
+  <li><strong>Normalized Balanced Accuracy (NBA):</strong> $\text{NBA} = (\text{BalAcc} - 1/K)/(1 - 1/K)$, a $K$-invariant skill score (0 = chance, 1 = perfect) that lets binary and 3-class numbers be compared on a single axis</li>
+  <li><strong>Matthews Correlation Coefficient (MCC):</strong> Gorodkin generalization to $K \geq 2$ classes</li>
   <li><strong>Per-class recall:</strong> $\text{Rec}_c = \frac{1}{N_c}\sum_{i:y_i=c} \mathbf{1}[\hat{h}_i = c]$</li>
   <li><strong>Confusion matrix</strong> $C[y, \hat{h}]$, row-normalized</li>
-  <li><strong>Bootstrap 95% CI</strong> on all point estimates, 1000 FD-level resamples</li>
+  <li><strong>Stratified bootstrap 95% CI</strong> on all point estimates ($B = 1000$ FD-level resamples, stratified by ground-truth class)</li>
 </ul>
 <p>
   Every benchmark is additionally anchored by a <strong>majority-class</strong> baseline (always predict the most frequent class in the benchmark). Because several of our benchmarks are class-imbalanced (ForecastBench resolves ~83% No), a system must outperform majority-class accuracy to claim any selection skill.
@@ -293,7 +326,7 @@ $$
 </p>
 
 <div class="note">
-  <span class="note-title">Connection to ACH theory:</span> ACH specifically instructs analysts to identify "diagnostic" evidence — evidence inconsistent with all but one hypothesis. The variance of the influence row operationalizes this: an indicator that rates $I \approx +1$ for one hypothesis and $\approx -1$ for another has high $d_j$; one that rates near zero for all has $d_j \approx 0$.
+  <span class="note-title">Connection to ACH theory:</span> ACH specifically instructs analysts to identify "diagnostic" evidence, that is, evidence inconsistent with all but one hypothesis. The variance of the influence row operationalizes this: an indicator that rates $I \approx +1$ for one hypothesis and $\approx -1$ for another has high $d_j$; one that rates near zero for all has $d_j \approx 0$.
 </div>
 
 <h3>4.3 Steps 3-4: Retrieval and Presence Scoring</h3>
@@ -326,7 +359,7 @@ $$
 
 <h3>4.5 Optional Domain-Specific Refinement</h3>
 <p>
-  When the hypothesis space has a coarse-to-fine structure, an optional secondary pass can refine the primary pick within the top-ranked coarse class. The general pattern: a task-specific classifier scores retrieved articles along a domain-defined axis and uses cumulative agreement to resolve ambiguity the matrix aggregation left unresolved. For our benchmark's primary binary target (Comply vs Surprise, §3.4) this step is omitted; it may help the secondary multi-class GDELT-CAMEO Geopolitics target along a verbal-vs-material refinement axis. For binary-hypothesis benchmarks (e.g. ForecastBench), the refinement pass is skipped.
+  When the hypothesis space has a coarse-to-fine structure, an optional secondary pass can refine the primary pick within the top-ranked coarse class. The general pattern: a task-specific classifier scores retrieved articles along a domain-defined axis and uses cumulative agreement to resolve ambiguity the matrix aggregation left unresolved. For our benchmark's primary binary target (Comply vs Surprise, §3.2) this step is omitted; it could in principle help the secondary multiclass targets (e.g., the GDELT-CAMEO Peace/Tension/Violence ordinal along an intensity-resolution axis), but it is not used in any reported result.
 </p>
 
 <h3>4.6 Multi-Agent Adversarial ACH</h3>
@@ -352,20 +385,87 @@ $$
 <h2>5. Experimental Setup</h2>
 
 <h3>5.1 Datasets</h3>
+<p>
+  We release the <strong>EMR-ACH FD benchmark</strong> as a stand-alone artifact (Contribution C1) so that the experiments below are reproducible end-to-end without re-running the construction pipeline. Every FD in every domain conforms to a single record contract (canonical schema in <code>docs/FORECAST_DOSSIER.md</code>): a question, a domain-multiclass ground-truth label preserved for ablation as <code>x_multiclass_*</code>, a binary <strong>Comply vs. Surprise</strong> primary target derived from a domain-appropriate prior-state heuristic, an article pool restricted to publish dates strictly before the forecast point, and provenance metadata (source, channel, retrieval method) sufficient to reconstruct any retrieval decision. Four independent leakage guards apply uniformly: article timestamp $&lt; t^*$, resolution date $&gt; \text{model\_cutoff} + \text{buffer}$, retrieval-channel / label-channel isolation (for GDELT-CAMEO, editorial news only; the GDELT KG that supplies the label is excluded from retrieval), and an experiment-time Forecast Horizon $h$ that further holds out the final $h$ days. FDs are stratified by <code>fd_type ∈ {stability, change}</code> so that headline metrics can be reported on the change subset, where the model must read evidence to win rather than ride the status-quo. We publish a primary build at $\text{cutoff} = 2026\text{-}01\text{-}01$ and a leakage-probe build at $\text{cutoff} = 2024\text{-}04\text{-}01$ (smaller, $\sim 300$ FDs after quality filter, $90$-day buffer). Three domains share this contract:
+</p>
 
 <h4>ForecastBench (binary prediction markets)</h4>
 <p>
-  ForecastBench [4] provides a dynamic benchmark drawn from prediction markets (Metaculus, Manifold, Polymarket). We restrict to single-ID binary questions with resolved ground truth. Questions are filtered by keyword, and those resolving before the model's training cutoff + buffer are dropped. Class balance is ~83% No / ~17% Yes, so the majority-class baseline accuracy is 83%; any reported system must be compared against it.
+  Drawn from ForecastBench [4]'s upstream resolution sets, restricted to single-ID resolved questions from human-calibrated prediction markets only (Polymarket, Metaculus, Manifold, Infer); ACLED and FRED are excluded as their crowd-probability proxies are algorithmic event counts, not calibrated forecasts (Brier $&gt; 0.45$ on the probed subset). The v2.1 default disables the legacy geopolitics keyword filter, growing the FD count from $\sim 530$ to $\sim 1{,}172$ across all subjects. The crowd probability $\hat p$ is preserved on every FD, both as the prior-state heuristic for Comply/Surprise promotion and as a calibration anchor. Class balance under the binary primary target is approximately $83\%$ Comply / $17\%$ Surprise, so the majority-class accuracy is $83\%$; every reported system is compared against this floor. <strong>Production-time retrieval</strong> is dense cosine over the unified article pool (SBERT all-mpnet-base-v2 by default, OpenAI <code>text-embedding-3-small</code> via the v2.2 default Batch path), implemented in <code>scripts/compute_relevance.py</code>; full mechanics in Appendix C.
 </p>
 
 <h4>GDELT-CAMEO Geopolitics</h4>
 <p>
-  The <strong>GDELT-CAMEO Geopolitics</strong> subset is constructed from scratch on the public GDELT 2.0 Knowledge Graph, entirely within the post-cutoff window. The pipeline filters for country-coded bilateral events with $\geq 50$ daily source mentions (a long-standing GDELT-community reliability threshold), groups events into $(t, \text{actor}_s, \text{actor}_o)$ daily FDs, and labels each with the <strong>3-class ordinal intensity</strong> (Peace / Tension / Violence) derived from the CAMEO root codes (01–09 / 10–17 / 18–20). GDELT is used as the question/label source only; the evidence channel is independent editorial news (NYT, Guardian, Google News), decoupling retrieval from ground truth. The prior work MIRAI [3] uses the same data source with a different (quad-class, oracle-retrieval, variable-horizon) methodology — we cite it as an external anchor but share no code or data-construction path.
+  Constructed from scratch on the public GDELT 2.0 Knowledge Graph, entirely within the post-cutoff window. The pipeline filters for country-coded bilateral events with $\geq 20$ daily source mentions (a relaxation of the historical GDELT-community $\geq 50$ threshold; both are reliability signals, the lower threshold grows the benchmark from $\sim 2.4$k to $\sim 5$-$6$k FDs without admitting unreliable single-source reports), groups events into $(t, \text{actor}_s, \text{actor}_o)$ daily FDs, and labels each with the <strong>3-class ordinal intensity</strong> (Peace / Tension / Violence) derived from the CAMEO root codes ($01$-$09$ / $10$-$17$ / $18$-$20$). GDELT is used as the question/label source only; the evidence channel is independent editorial news (NYT, The Guardian, Google News), decoupling retrieval from ground truth and ruling out the trivial leakage in which the model would re-score the very wire that produced the label. <strong>Production-time retrieval</strong> is dense cosine on this editorial-only pool with an actor-pair pre-filter (drop articles that mention neither $s$ nor $o$ before scoring), implemented in <code>scripts/compute_relevance.py</code>. The prior work MIRAI [3] uses the same data source under a different (quad-class, oracle-retrieval, variable-horizon) protocol; we cite it as an external anchor but share no code, retrieval, or data-construction path (see Section 2.1).
 </p>
 
-<h4>Earnings (three-class Beat/Meet/Miss)</h4>
+<h4>Earnings (S&amp;P 500 Beat/Meet/Miss)</h4>
 <p>
-  We construct an earnings benchmark from publicly-reported quarterly EPS data. For each covered ticker × quarter, the FD asks whether reported EPS will Beat, Meet, or Miss the consensus estimate. The retrieval corpus is ticker- and macro-tagged news filtered to 30 days before the earnings call. Ground truth is the signed EPS surprise with configurable Meet band. This benchmark tests whether the ACH selection procedure generalizes beyond geopolitics to a numerically-driven financial task.
+  Constructed via <code>yfinance</code> for the S&amp;P 500 universe over the 2026-Q1 reporting season. For each ticker $\times$ quarter, the FD asks whether reported EPS will <strong>Beat</strong>, <strong>Meet</strong>, or <strong>Miss</strong> the analyst consensus, with a Meet band configurable as a fraction of consensus (default $|\text{surprise}|&lt;2\%$). Ground truth is the signed EPS surprise. The retrieval corpus is ticker- and macro-tagged news from a five-source cascade (SEC EDGAR 8-K filings, Finnhub company news, yfinance, Google News, GDELT DOC) filtered to the pre-event window; SEC filings carry a <code>source_type: "filing"</code> tag and an asymmetric pre-event-only filter so that the current quarter's 10-Q (which <em>is</em> the earnings release) cannot leak. The prior-state heuristic for Comply/Surprise promotion is the mode of the prior four quarters' surprise class, exposing the substantial chronic-beater stratum that would otherwise dominate the headline. <strong>Production-time retrieval</strong> for the earnings slice is a relational <em>(ticker, announce-date, lookback)</em> join (<code>scripts/link_earnings_articles.py</code>), not SBERT cosine: at $K=10$, $\text{lookback}=90$ days, the link rule fills $\sim 90\%$ of FDs (483 of 535 in the v2.1 build) where dense cosine over a generic news pool was empirically the wrong tool for a structured-key slice. Appendix C summarizes the per-benchmark routing.
+</p>
+
+<h4>Source-to-FD mapping</h4>
+<p>
+  Table 6 summarizes how each upstream source is normalized into the unified FD record contract. The same six output fields, derived by source-specific code paths, drop into the same JSONL record schema for every domain.
+</p>
+
+<table>
+  <caption>Table 6. Mapping from raw upstream sources to the unified FD record contract. The same column on the right is filled by every domain; the left column lists the source-specific paths.</caption>
+  <tr>
+    <th>Domain</th>
+    <th>Upstream source(s)</th>
+    <th>Question text $q$</th>
+    <th>Multiclass label $y$</th>
+    <th>Prior-state oracle</th>
+    <th>Forecast point $t^{*}$</th>
+    <th>Evidence pool $\mathcal{D}$</th>
+  </tr>
+  <tr>
+    <td><strong>ForecastBench</strong></td>
+    <td>FB-datasets repo: question_sets/*-llm.json + resolution_sets/*_resolution_set.json (Polymarket, Metaculus, Manifold, Infer)</td>
+    <td><code>question</code> + <code>background</code> fields, verbatim from upstream JSON</td>
+    <td><code>resolved_to</code> &gt;= 0.5 &rarr; Yes; otherwise No</td>
+    <td>crowd majority on <code>freeze_datetime_value</code> (&gt;= 0.5 &rarr; Yes else No)</td>
+    <td>market <code>freeze_datetime</code></td>
+    <td>NYT + Guardian + Google News, SBERT cosine top-10 within $30$ days pre-freeze</td>
+  </tr>
+  <tr>
+    <td><strong>GDELT-CAMEO</strong></td>
+    <td>GDELT 2.0 KG export CSVs (15-min cadence), filtered to country-coded bilateral events, $\geq 20$ daily mentions</td>
+    <td>3-class intensity via <code>cameo_intensity.event_to_intensity()</code> on the EventBaseCode (01-09 &rarr; Peace, 10-17 &rarr; Tension, 18-20 &rarr; Violence)</td>
+    <td>modal 3-class intensity over the prior $30$ days for the same $(s,o)$ pair</td>
+    <td>first day of test month for the $(t, s, o)$ triple</td>
+    <td>Editorial news only (NYT, Guardian, Google News) keyed on actor pair; GDELT-KG urls are excluded from retrieval to enforce evidence-channel isolation</td>
+  </tr>
+  <tr>
+    <td><strong>Earnings</strong></td>
+    <td><code>yfinance</code> earnings calendar + EPS estimate / actual; ticker universe = S&amp;P 500</td>
+    <td>signed surprise vs. consensus, banded into Beat / Meet / Miss with $|\text{surprise}|&lt;2\%$ default Meet band</td>
+    <td>mode of prior $4$ quarters' Beat/Meet/Miss for the same ticker</td>
+    <td>day before reported earnings call</td>
+    <td>5-source cascade: SEC EDGAR 8-K (pre-event only, <code>source_type: "filing"</code>), Finnhub, yfinance, Google News, GDELT DOC; SBERT cosine top-10</td>
+  </tr>
+</table>
+
+<p>
+  After mapping, every FD passes through the same downstream stages: unified-articles join, per-benchmark relevance routing (dense cosine for ForecastBench and GDELT-CAMEO, ticker-date relational join for Earnings), prior-state annotation (which performs the Comply/Surprise promotion described in &sect;3.2), quality filter, and per-stage drop-reason audit. The full pipeline is one CLI invocation; reproducing the benchmark for any cutoff requires only the YAML config and the upstream source credentials.
+</p>
+
+<h4>5.1.1 Gold subset</h4>
+<p>
+  Alongside the full v2.1 build (<code>benchmark/data/2026-01-01/</code>; $6{,}294$ FDs across the three domains), we publish a curated <strong>gold subset</strong> at <code>benchmark/data/2026-01-01-gold/</code>, produced by the <code>scripts/build_gold_subset.py</code> selection cascade. The cascade applies, in order, nine filters: (1) parent v2.1 quality, (2) $\geq 8$ resolved articles per FD, (3) $\geq 5$ distinct article publication dates, (4) $\geq 14$-day forecast horizon, (5) strict horizon enforcement on retained articles (no nowcasting), (6) <code>fd_type</code> in $\{$stability, change$\}$, (7) average article body $\geq 1{,}500$ chars, (8) source diversity $\geq 3$ distinct hostnames, and (9) per-benchmark predictability filters (ForecastBench topic denylist, GDELT-CAMEO actor in a $\sim 70$-code geopolitically-significant set, Earnings ticker in S&amp;P 100), followed by stratified sampling toward per-(benchmark, fd_type) quotas (default $60/40/100/100/60/60$, total $\sim 420$ FDs). The output folder is itself a self-contained deliverable: schema + zero-dependency loader + validator + eval template ship inline (see the gold folder's <code>README.md</code>). The gold subset exists to give a small, balanced, defensible benchmark for headline runs; the full set remains the right surface for ablations.
+</p>
+
+<table>
+  <caption>Table 6a. Gold subset composition by benchmark $\times$ <code>fd_type</code>. Counts to be filled at gold-subset build time from <code>benchmark/data/2026-01-01-gold/build_manifest.json</code>.<sup>*</sup></caption>
+  <tr><th>benchmark</th><th>stability</th><th>change</th><th>total</th></tr>
+  <tr><td><code>forecastbench</code></td><td>[PENDING]</td><td>[PENDING]</td><td>[PENDING]</td></tr>
+  <tr><td><code>gdelt-cameo</code></td><td>[PENDING]</td><td>[PENDING]</td><td>[PENDING]</td></tr>
+  <tr><td><code>earnings</code></td><td>[PENDING]</td><td>[PENDING]</td><td>[PENDING]</td></tr>
+  <tr><td><strong>total</strong></td><td>[PENDING]</td><td>[PENDING]</td><td>[PENDING]</td></tr>
+</table>
+<p style="font-size:9pt;color:var(--cap);margin-top:-4px;">
+  <sup>*</sup>The gold subset has not yet been materialized at the time of this draft (the cascade script and selection rules are committed, but no <code>2026-01-01-gold/build_manifest.json</code> exists yet). On first build, paste the per-stratum counts from the manifest's <code>n_fds_by_stratum</code> field into this table; the default-target row sums are the upper bound (60/40/100/100/60/60 = 420 FDs).
 </p>
 
 <h3>5.2 Baselines (all pick-only)</h3>
@@ -373,18 +473,18 @@ $$
   We re-implement every comparison method below under identical corpus, retrieval, and model conditions as EMR-ACH (<code>gpt-4o-mini</code>, temperature 0, same retrieved article set per FD). Every baseline returns a single hypothesis label; plurality voting is used wherever the baseline natively produces multiple candidates.
 </p>
 <ul>
-  <li><strong>B1 — Direct Prompting:</strong> single call, question + hypotheses, no articles, pick one hypothesis.</li>
-  <li><strong>B2 — Chain-of-Thought [6]:</strong> B1 with CoT instructions; pick one hypothesis after reasoning.</li>
-  <li><strong>B3 — RAG:</strong> single call, question + hypotheses + top-10 articles; pick one hypothesis.</li>
-  <li><strong>B4 — Self-Consistency [9]:</strong> $k = 4$ CoT samples at $T = 0.7$, each returns a pick; final label is the plurality.</li>
-  <li><strong>B5 — Multi-Agent Debate [10]:</strong> $n_{\text{agents}} = 2$, 1 round; a judge picks the winning hypothesis.</li>
-  <li><strong>B6 — Tree-of-Thoughts [8]:</strong> branch-and-evaluate with breadth 2, depth 2; best-path hypothesis pick.</li>
-  <li><strong>B7 — Reflexion [7-series]:</strong> initial pick, self-critique, revised pick; 2 iterations.</li>
-  <li><strong>B8 — <em>deprecated</em>:</strong> Verbalized Confidence no longer applies under pick-only evaluation; replaced by a trivial <em>majority-class</em> reference baseline reported in every results table.</li>
-  <li><strong>B9 — LLM Ensemble [20-series]:</strong> 3 configurations at $T \in \{0.0, 0.5, 1.0\}$, each returns a pick; final label is the plurality.</li>
+  <li><strong>B1 (Direct Prompting):</strong> single call, question + hypotheses, no articles, pick one hypothesis.</li>
+  <li><strong>B2 (Chain-of-Thought) [6]:</strong> B1 with CoT instructions; pick one hypothesis after reasoning.</li>
+  <li><strong>B3 (RAG):</strong> single call, question + hypotheses + top-10 articles; pick one hypothesis.</li>
+  <li><strong>B4 (Self-Consistency) [9]:</strong> $k = 4$ CoT samples at $T = 0.7$, each returns a pick; final label is the plurality.</li>
+  <li><strong>B5 (Multi-Agent Debate) [10]:</strong> $n_{\text{agents}} = 2$, 1 round; a judge picks the winning hypothesis.</li>
+  <li><strong>B6 (Tree-of-Thoughts) [8]:</strong> branch-and-evaluate with breadth 2, depth 2; best-path hypothesis pick.</li>
+  <li><strong>B7 (Reflexion) [7-series]:</strong> initial pick, self-critique, revised pick; 2 iterations.</li>
+  <li><strong>B8 (<em>deprecated</em>):</strong> Verbalized Confidence no longer applies under pick-only evaluation; replaced by a trivial <em>majority-class</em> reference baseline reported in every results table.</li>
+  <li><strong>B9 (LLM Ensemble) [20-series]:</strong> 3 configurations at $T \in \{0.0, 0.5, 1.0\}$, each returns a pick; final label is the plurality.</li>
 </ul>
 <p>
-  Baselines B4–B9 target three orthogonal alternative hypotheses for where EMR-ACH's gains might come from: sampling-variance reduction (B4), generic multi-agent deliberation without a hypothesis matrix (B5, B6, B7), and model-ensembling (B9). If EMR-ACH still outperforms after controlling for all of these, the gain is attributable to the evidence-matrix structure specifically.
+  Baselines B4 to B9 target three orthogonal alternative hypotheses for where EMR-ACH's gains might come from: sampling-variance reduction (B4), generic multi-agent deliberation without a hypothesis matrix (B5, B6, B7), and model-ensembling (B9). If EMR-ACH still outperforms after controlling for all of these, the gain is attributable to the evidence-matrix structure specifically.
 </p>
 
 <h3>5.3 Ablation Variants</h3>
@@ -401,6 +501,7 @@ $$
   <li><strong>Retrieve a news stream for $[t^* - T, t^*)$</strong> using source-appropriate retrieval; no article published on or after $t^*$ enters the pool.</li>
   <li><strong>Run the system</strong> (baseline or EMR-ACH); it returns a single hypothesis label.</li>
   <li><strong>Compare against ground truth</strong> (and the majority-class reference) to compute accuracy, macro-F1, and per-class recall with bootstrap CIs.</li>
+  <li><strong>Choose the deliverable surface.</strong> The published v2.1 bundle ships both the <em>full set</em> ($\sim 6{,}294$ FDs across the three benchmarks) and the curated <em>gold subset</em> ($\sim 300$-$500$ FDs after the &sect;5.1.1 cascade). Headline runs and tables in &sect;6 use the gold subset, which is small enough for full re-runs under cost / time budgets and balanced enough for a clean Comply/Surprise change-subset metric. Ablations (&sect;5.3) and per-class breakdowns are run on the full set, where the larger per-stratum sample sizes drive narrower bootstrap CIs.</li>
 </ol>
 <p>
   <strong>Temporal leakage audit:</strong> all three benchmarks are constructed so that every FD satisfies both article-level ($\text{publish\_date} &lt; t^*$) and model-cutoff-level ($\text{resolution\_date} &gt; \text{cutoff} + \text{buffer}$) leakage constraints. FDs that fail either constraint are excluded at build time.
@@ -411,20 +512,20 @@ $$
 
 <h3>5.5 Phased Experiment Plan</h3>
 <ul>
-  <li><strong>Phase 0 — Benchmark build.</strong> Construct the unified FD file at the target cutoff; run the leakage audit; publish <code>benchmark/data/{cutoff}/</code>.</li>
-  <li><strong>Phase 1 — Smoke tests (sync, 10 FDs/stage).</strong> Verify prompt → parsed pick for every baseline and every EMR-ACH stage. Success criterion: 10/10 parse into valid $\mathcal{H}$ labels.</li>
-  <li><strong>Phase 2 — Baselines B1–B9.</strong> Full-benchmark run on all nine baselines via Batch API. Report Table 1 (accuracy, macro-F1 per baseline × source).</li>
-  <li><strong>Phase 3 — EMR-ACH.</strong> Full pipeline run. Report Table 2 (incremental build-up) and Table 3 (baselines vs. full system).</li>
-  <li><strong>Phase 4 — Ablation and scaling.</strong> Ablation Table 4; multi-agent scaling; per-source breakdown.</li>
+  <li><strong>Phase 0 (Benchmark build).</strong> Run <code>python scripts/build_benchmark.py --cutoff YYYY-MM-DD</code> to construct the unified FD file at the target cutoff (per-benchmark raw build, multi-source news fetch, prior-state annotation with Comply/Surprise promotion, relevance, quality filter, diagnostic + EDA, publish); run the leakage audit; publish <code>benchmark/data/{cutoff}/</code>. We build two cutoffs: the primary 2026-01-01 build and the 2024-04-01 leakage-probe build.</li>
+  <li><strong>Phase 1 (Smoke tests, sync, 10 FDs/stage).</strong> Verify prompt to parsed pick for every baseline and every EMR-ACH stage. Success criterion: 10/10 parse into valid $\mathcal{H}$ labels.</li>
+  <li><strong>Phase 2 (Baselines B1 to B9, minus the deprecated B8).</strong> Full-benchmark run on all eight live baselines plus the majority-class reference, via the OpenAI Batch API. Report Table 1 (accuracy, macro-F1, BalAcc, NBA, MCC per baseline × benchmark × <code>fd_type</code>).</li>
+  <li><strong>Phase 3 (EMR-ACH).</strong> Full pipeline run. Report Table 2 (incremental build-up) and Table 3 (baselines vs. full system) on the primary cutoff, with the leakage-probe cutoff repeated for B1 (Direct) and EMR-ACH-full only.</li>
+  <li><strong>Phase 4 (Ablation and scaling).</strong> Ablation Table 4; multi-agent scaling; per-benchmark and per-<code>fd_type</code> breakdown.</li>
 </ul>
 
 <h3>5.6 Implementation Details</h3>
 <p>
-  All LLM queries use <strong>gpt-4o-mini-2024-07-18</strong>, temperature $0$ for reproducibility. All batch jobs are submitted via the OpenAI Batch API (50% cost reduction; 24h turnaround). Embeddings: SBERT (all-MiniLM-L6-v2) with a per-row fingerprinted cache for incremental benchmark builds. Retrieval: GDELT DOC API + BM25 hybrid for ForecastBench; oracle GDELT KG links for GDELT-CAMEO; ticker-tagged news for Earnings. Parameters: $m = 24$ for quad-class, $m = 8$ for binary; $n = 10$ articles; $\alpha = 0.015$. Multi-agent: $|\mathcal{H}|$ advocates + 1 judge; 1 round. Statistical significance: 95% bootstrap CIs ($B = 1000$), McNemar's test for pairwise comparisons.
+  All LLM queries use <strong>gpt-4o-mini-2024-07-18</strong>, temperature $0$ for reproducibility. All batch jobs are submitted via the OpenAI Batch API (50% cost reduction; 24h turnaround). Embeddings: SBERT (all-MiniLM-L6-v2) with a per-row fingerprinted cache for incremental benchmark builds. Retrieval: editorial news (NYT + Guardian + Google News) for ForecastBench and GDELT-CAMEO (the GDELT KG is the question/label channel for GDELT-CAMEO and is excluded from retrieval to enforce evidence-channel isolation); a 5-source cascade (SEC EDGAR 8-K with <code>source_type: "filing"</code> asymmetric pre-event filter, Finnhub, yfinance, Google News, GDELT DOC) for Earnings. The Forecast Horizon $h$ (default $14$ days) is an experiment-time parameter applied at runtime by <code>apply_experiment_horizon()</code> in the baselines runner and is not baked into the FDs at build time. Parameters: $m = 9$ for 3-class targets ($K_{\text{pair}} = 3$ indicators per hypothesis pair), $m = 8$ for binary; $n = 10$ articles; $\alpha = 0.015$. Multi-agent: $|\mathcal{H}|$ advocates + 1 judge; 1 round. Statistical significance: 95% stratified bootstrap CIs ($B = 1000$), McNemar's test for pairwise comparisons.
 </p>
 
 <table>
-  <caption>Table 6. API call count and estimated per-FD cost at <code>gpt-4o-mini</code> Batch API pricing ($0.075/1M input, $0.300/1M output). Averages across three benchmarks.</caption>
+  <caption>Table 7. API call count and estimated per-FD cost at <code>gpt-4o-mini</code> Batch API pricing ($0.075/1M input, $0.300/1M output). Averages across three benchmarks.</caption>
   <tr>
     <th>System</th><th>LLM calls / FD</th><th>Est. cost / FD</th><th>Relative to B1</th>
   </tr>
@@ -458,7 +559,7 @@ $$
     <th>Acc (%)</th><th>Macro-F1</th>
     <th>Acc (%)</th><th>Macro-F1</th>
   </tr>
-  <tr><td>Majority-class</td><td>83.4</td><td>0.45</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+  <tr><td>Majority-class</td><td>83.4</td><td>0.45</td><td>TBD</td><td>TBD</td><td>TBD</td><td>TBD</td></tr>
   <tr><td>B1 Direct</td><td>TBD</td><td>TBD</td><td>TBD</td><td>TBD</td><td>TBD</td><td>TBD</td></tr>
   <tr><td>B2 CoT</td><td>TBD</td><td>TBD</td><td>TBD</td><td>TBD</td><td>TBD</td><td>TBD</td></tr>
   <tr><td>B3 RAG</td><td>TBD</td><td>TBD</td><td>TBD</td><td>TBD</td><td>TBD</td><td>TBD</td></tr>
@@ -478,9 +579,44 @@ $$
   Table 2 (pending) reports per-class recall for Peace / Tension / Violence under three representative system configurations: best baseline, EMR-ACH base, and full system. This isolates which classes benefit most from diagnosticity weighting vs. multi-agent debate.
 </p>
 
+<h3>6.2.1 Table 3, Hybrid-vs-articles-only ablation</h3>
+<p>
+  Table 3 isolates the marginal value of the ETD atomic-fact layer
+  (see Appendix C and the Category F backlog in
+  <code>docs/V2_2_REFACTOR_BACKLOG.md</code>) by comparing three baseline
+  configurations on the gold subset (see &sect;5.1.1):
+  <strong>B3</strong> articles-only,
+  <strong>B10</strong> hybrid (articles + facts), and
+  <strong>B10b</strong> facts-only. Headline metrics are reported on the
+  Change subset per the protocol in &sect;3.4. All cells are PENDING the
+  gold-subset build; values will be populated by
+  <code>scripts/eval/smoke_baselines_on_gold.sh</code>.
+</p>
+<table>
+  <caption>Table 3. Hybrid-vs-articles-only ablation across B3 / B10 / B10b on the gold subset. <strong>[PENDING gold build.]</strong> Headline metrics on the Change subset; full-set metrics in the right two columns are reported for context only.<sup>&dagger;</sup></caption>
+  <thead>
+    <tr>
+      <th>Method</th>
+      <th>Acc</th>
+      <th>Macro-F1</th>
+      <th>Change-subset Acc</th>
+      <th>Change-subset Macro-F1</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>B3 (articles only)</td><td>TBD</td><td>TBD</td><td>TBD</td><td>TBD</td></tr>
+    <tr><td>B10 (hybrid: articles + facts)</td><td>TBD</td><td>TBD</td><td>TBD</td><td>TBD</td></tr>
+    <tr><td>B10b (facts only)</td><td>TBD</td><td>TBD</td><td>TBD</td><td>TBD</td></tr>
+  </tbody>
+</table>
+<p>
+  <sup>&dagger;</sup>Cells fill in post-gold-build per
+  <code>scripts/eval/smoke_baselines_on_gold.sh</code>.
+</p>
+
 <h3>6.3 Confusion Matrices</h3>
 <p>
-  For each benchmark × system pair, we report a row-normalized confusion matrix $C[y, \hat{h}]$ to expose systematic misselections. In the pilot ForecastBench run, the B1 and B2 baselines degenerate into a near-constant "No" predictor (recall "No" $\approx 0.96$; recall "Yes" $\approx 0.17$), failing to beat majority-class accuracy and exhibiting the failure mode that motivates structured evidence aggregation.
+  For each benchmark × system pair, we report a row-normalized confusion matrix $C[y, \hat{h}]$ to expose systematic misselections. As a motivating <em>pre-v2.1 pilot measurement</em> on the legacy multiclass ForecastBench framing (raw Yes/No targets, before the Comply/Surprise unification described in §3.2), the B1 and B2 baselines degenerated into a near-constant "No" predictor (recall "No" $\approx 0.96$; recall "Yes" $\approx 0.17$), failing to beat majority-class accuracy and exhibiting the same status-quo collapse failure mode that motivates the Comply/Surprise change-subset stratification. The Phase-3 confusion matrices below are reported on the v2.1 binary primary target and are not directly comparable to these pilot numbers.
 </p>
 
 <h3>6.4 Ablation Study</h3>
@@ -507,12 +643,12 @@ $$
 
 <h3>7.1 Why Does Evidence Matrix Reasoning Work?</h3>
 <p>
-  Two mechanisms explain the gains. <strong>Decomposition:</strong> each sub-query is simpler — "does this article mention military exercises?" is more reliably answerable than "what geopolitical event will happen?" LLMs are substantially more accurate on narrow, concrete factual queries than on open-ended multi-hypothesis selection. <strong>Parallel hypothesis evaluation:</strong> scoring all hypotheses simultaneously from the same indicator and article prevents anchoring bias — the tendency to over-endorse the first plausible hypothesis encountered. The resulting per-hypothesis scores aggregate many small decisions into a single argmax, which is structurally more robust than a one-shot selection from the LLM.
+  Two mechanisms explain the gains. <strong>Decomposition:</strong> each sub-query is simpler; "does this article mention military exercises?" is more reliably answerable than "what geopolitical event will happen?" LLMs are substantially more accurate on narrow, concrete factual queries than on open-ended multi-hypothesis selection. <strong>Parallel hypothesis evaluation:</strong> scoring all hypotheses simultaneously from the same indicator and article prevents anchoring bias, the tendency to over-endorse the first plausible hypothesis encountered. The resulting per-hypothesis scores aggregate many small decisions into a single argmax, which is structurally more robust than a one-shot selection from the LLM.
 </p>
 
 <h3>7.2 Diagnostic Weighting: Why It Helps</h3>
 <p>
-  Without diagnostic weighting, an indicator like "diplomatic meeting between $s$ and $o$ officials" might receive $I_{jk} \approx 0$ for all four hypotheses: plausible under any scenario. Such an indicator contributes noise equally to all scores. With $d_j \approx 0$, it is effectively zeroed out. A discriminating indicator like "military exercises along shared border" receives high $I_{j,\text{MK}}$ and low $I_{j,\text{VC}}$, yielding a large $d_j$ that amplifies its contribution to the correct hypothesis.
+  Without diagnostic weighting, an indicator like "diplomatic meeting between $s$ and $o$ officials" might receive $I_{jk} \approx 0$ for all hypotheses: plausible under any scenario. Such an indicator contributes noise equally to all scores. With $d_j \approx 0$, it is effectively zeroed out. A discriminating indicator like "military exercises along shared border" receives high $I_{j,\text{Violence}}$ and low $I_{j,\text{Peace}}$, yielding a large $d_j$ that amplifies its contribution to the correct hypothesis.
 </p>
 
 <h3>7.3 Trade-offs: Oracle vs. Automated Retrieval</h3>
@@ -523,7 +659,7 @@ $$
 <h3>7.4 Limitations</h3>
 <ul>
   <li><strong>Single-pick granularity.</strong> The paper does not evaluate calibration of any kind. For downstream use cases that require a distribution over hypotheses (e.g., portfolio risk), a probabilistic extension is future work.</li>
-  <li><strong>Class imbalance.</strong> On ForecastBench (83% No), beating the majority-class baseline is a hard bar. Systems that do not must be reported as having no skill on that benchmark, not as modestly accurate.</li>
+  <li><strong>Class imbalance.</strong> On ForecastBench under the binary Comply/Surprise primary target ($\sim 83\%$ Comply), beating the majority-class baseline is a hard bar. Systems that do not must be reported as having no skill on that benchmark, not as modestly accurate.</li>
   <li><strong>Evaluation windows.</strong> All three benchmarks are constructed strictly after the model training cutoff; we do not run any experiment on data pre-cutoff.</li>
   <li><strong>Indicator independence.</strong> The evidence-matrix formulation assumes indicator independence; relaxing this via a latent factor model is future work.</li>
   <li><strong>Multi-agent cost.</strong> The adversarial variant costs roughly 3–4× the base pipeline. Practical deployment with a smaller advocate model + stronger judge is an open cost-optimization direction.</li>
@@ -557,7 +693,7 @@ $$
   <li>Wang, X., et al. (2022). Self-Consistency Improves Chain of Thought Reasoning. <em>ICLR 2023.</em></li>
   <li>Du, Y., et al. (2023). Improving Factuality and Reasoning via Multiagent Debate. <em>ICML 2024.</em></li>
   <li>AgentCDM: Enhancing Multi-Agent Collaborative Decision-Making via ACH-Inspired Structured Reasoning. <em>AAAI 2025.</em> arXiv:2508.11995.</li>
-  <li>ThinkTank-ME: A Multi-Expert Framework for Middle East Event Forecasting (2026). arXiv:2601.17065.</li>
+  <li>Abolghasemi, M., et al. (2026). ThinkTank-ME: A Multi-Expert Framework for Middle East Event Forecasting. arXiv:2601.17065. <em>[Author block PENDING confirmation pre-submission.]</em></li>
   <li>Carbonell, J., Goldstein, J. (1998). The Use of MMR for Reranking. <em>SIGIR 1998.</em></li>
   <li>Kahneman, D. (2011). <em>Thinking, Fast and Slow.</em> Farrar, Straus and Giroux.</li>
   <li>AutoCast++: Enhancing World Event Prediction with Zero-shot Context Retrieval. arXiv:2310.01880.</li>
@@ -566,6 +702,14 @@ $$
   <li>Liang, T., et al. (2023). Encouraging Divergent Thinking in Large Language Models through Debate. arXiv:2305.19118.</li>
   <li>Xie, J., et al. (2024). From News to Forecast. <em>NeurIPS 2024.</em> arXiv:2409.17515.</li>
   <li>Tang, H., et al. (2024). Forecasting Future International Events. <em>ACL Findings 2024.</em> arXiv:2411.14042.</li>
+  <li>Chen, W., et al. (2022). Program of Thoughts Prompting. arXiv:2211.12588. <em>[Cited as [21] in body; full bibliographic entry PENDING confirmation; this stub mirrors entry [17] which may be the same work.]</em></li>
+  <li>Jin, W., et al. (2021). ForecastQA: A Question Answering Challenge for Event Forecasting with Temporal Text Data. <em>ACL 2021.</em> arXiv:2005.00792. <em>[Author block + venue PENDING confirmation pre-submission.]</em></li>
+  <li><em>[Reserved. Body cites [23] but no current usage was found in the latest sweep; verify or remove the citation pre-submission.]</em></li>
+  <li>Smit, A.P., Duckworth, P., Grinsztajn, N., et al. (2024). Should we be going MAD? A Look at Multi-Agent Debate Strategies for LLMs. <em>ICML 2024.</em> arXiv:2311.17371. <em>[Cited as [24] for the multi-agent debate extension to mathematical / knowledge-intensive QA; entry PENDING confirmation pre-submission.]</em></li>
+  <li><em>[Reserved. Body cites [25] but no current usage was found in the latest sweep; verify or remove the citation pre-submission.]</em></li>
+  <li><em>[Reserved. Body cites [26] but no current usage was found in the latest sweep; verify or remove the citation pre-submission.]</em></li>
+  <li>Xie, J., et al. (2024). From News to Forecast: Iterative Event Reasoning in LLM-Based Agents. <em>NeurIPS 2024.</em> arXiv:2409.17515. <em>[Body uses [27] for "Xie et al. multi-stage news-to-forecast"; this stub mirrors entry [19] which appears to be the same work; consolidate pre-submission.]</em></li>
+  <li>Tang, H., et al. (2024). Forecasting Future International Events with LLMs. <em>ACL Findings 2024.</em> arXiv:2411.14042. <em>[Body uses [28] for "Tang et al. iterative news-grounded reasoning"; this stub mirrors entry [20] which appears to be the same work; consolidate pre-submission.]</em></li>
 </ol>
 </div>
 
@@ -575,7 +719,7 @@ $$
 "For the forecasting query {$q$}, rate how strongly the presence of indicator {$f_j$} would imply hypothesis {$h_k$}.<br><br>
 Respond with exactly one of: <strong>strongly implies / weakly implies / neutral / weakly disconfirms / strongly disconfirms</strong>, followed by a one-sentence justification.<br><br>
 Indicator: {$f_j$}<br>
-Hypothesis: {$h_k$} — {description}<br>
+Hypothesis: {$h_k$} ({description})<br>
 Query context: {$q$}"
 </div>
 
@@ -593,6 +737,146 @@ Return JSON only, no prose, no code fences:<br>
 &nbsp;&nbsp;&quot;reasoning&quot;: &quot;&lt;one or two concise sentences&gt;&quot;<br>
 }"
 </div>
+
+<h2>Appendix C: Data Construction Pipeline</h2>
+<p>
+  This appendix summarizes the v2.1-shipped construction pipeline; the full per-script reference lives in <code>docs/PIPELINE.md</code>. The orchestrator is <code>scripts/build_benchmark.py --cutoff YYYY-MM-DD</code>; a single CLI invocation drives twelve stages, snapshots intermediate state for resume-ability, and emits the self-contained deliverable at <code>benchmark/data/{cutoff}/</code>.
+</p>
+
+<h3>C.1 Stage walkthrough</h3>
+<p>The pipeline runs the following stages in order, each with a snapshot tag so a failed run can be resumed without re-paying upstream API cost:</p>
+<ol>
+  <li><strong>Raw build</strong> per benchmark: <code>build_gdelt_cameo.py</code> (GDELT 15-min KG exports, country-pair filter), <code>build_earnings_benchmark.py</code> (yfinance EPS scrape + Beat/Meet/Miss classification), <code>download_forecastbench.py</code> (static repo clone).</li>
+  <li><strong>First unify</strong>: <code>unify_articles.py</code> + <code>unify_forecasts.py</code> merge per-source pools, dedup articles by URL hash, compute domain-multiclass ground truth.</li>
+  <li><strong>Multi-source per-FD news fetch</strong> over a unified $90$-day analysis window; per-benchmark fetcher cascades (Table C.1).</li>
+  <li><strong>Re-unify</strong> to fold the freshly-fetched news into the article pool.</li>
+  <li><strong>GDELT prior-state annotation</strong> (<code>annotate_gdelt_prior_state.py</code>): adds <code>prior_state_30d</code>, <code>fd_type</code>, and the Comply/Surprise primary target for the GDELT-CAMEO slice; the analogous prior-state functions for ForecastBench (crowd majority) and Earnings (mode of prior 4 quarters) run in <code>annotate_prior_state.py</code> at the same stage.</li>
+  <li><strong>Relevance routing</strong> (per benchmark, see C.3): dense cosine for FB and GDELT-CAMEO via <code>compute_relevance.py</code>; ticker-date relational join for Earnings via <code>scripts/link_earnings_articles.py</code>.</li>
+  <li><strong>GDELT context relink</strong> (<code>relink_gdelt_context.py</code>; legacy oracle fix retained for back-compat).</li>
+  <li><strong>Quality filter</strong> (<code>quality_filter.py</code>): the acceptance gate. Each FD must satisfy $\geq 3$ resolved articles, $\geq 2$ distinct publication days, $\geq 1{,}500$ chars total body, $\geq 20$-char question, and a leakage guard (every article published strictly before $t^*$, every FD resolving strictly after $\text{model\_cutoff} + \text{buffer}$).</li>
+  <li><strong>Diagnostics + EDA</strong> (<code>diagnostic_report.py</code>, <code>build_eda_report.py</code>): per-stage drop-reason audit + an HTML EDA bundle, both routed to <code>benchmark/audit/{cutoff}/</code>.</li>
+  <li><strong>Publish</strong> (<code>step_publish</code>): copies <code>forecasts.jsonl</code>, <code>articles.jsonl</code>, <code>benchmark.yaml</code>, and <code>build_manifest.json</code> into <code>benchmark/data/{cutoff}/</code>; scrubs stale <code>meta/</code>, <code>intermediate/</code>, <code>staging/</code> subdirectories left over from earlier builds; writes a <code>checksums.sha256</code> file over the two primary JSONL deliverables.</li>
+  <li><strong>ETD post-publish (optional)</strong> (<code>scripts/etd_post_publish.py</code>): orchestrates the atomic-fact extraction layer described in Appendix E.</li>
+  <li><strong>Gold subset (optional)</strong> (<code>scripts/build_gold_subset.py</code>): cascades the published bundle through the &sect;5.1.1 / Appendix D selection rules and emits a parallel self-contained folder at <code>benchmark/data/{cutoff}-gold/</code>.</li>
+</ol>
+
+<h3>C.2 Per-benchmark fetcher cascade</h3>
+<table>
+  <caption>Table C.1. Per-benchmark fetcher cascade. Each row is a single news source consulted at Stage 3 of the pipeline. Sources are unioned per FD with cross-source dedup by raw URL, normalized URL, and (fd_id, lowercased title prefix).</caption>
+  <tr><th>Benchmark</th><th>Source</th><th>Role</th></tr>
+  <tr><td rowspan="3">ForecastBench</td><td>NYT Article Search</td><td>1k req/day, archive back to 1851</td></tr>
+  <tr><td>The Guardian Open Platform</td><td>5k req/day, 1999+</td></tr>
+  <tr><td>Google News RSS</td><td>unlimited, recency-biased, no key</td></tr>
+  <tr><td rowspan="3">GDELT-CAMEO</td><td>NYT Article Search</td><td>editorial backbone</td></tr>
+  <tr><td>The Guardian Open Platform</td><td>editorial backbone</td></tr>
+  <tr><td>Google News RSS</td><td>recency layer; <em>GDELT DOC API is excluded</em> from the editorial cascade to keep the label channel and the evidence channel information-theoretically isolated</td></tr>
+  <tr><td rowspan="5">Earnings</td><td>SEC EDGAR 8-K filings</td><td>tagged <code>source_type: "filing"</code>, asymmetric pre-event-only filter</td></tr>
+  <tr><td>Finnhub company news</td><td>finance-first, ticker-keyed</td></tr>
+  <tr><td>yfinance news</td><td>most-recent ~10 per ticker</td></tr>
+  <tr><td>Google News RSS</td><td>backfill</td></tr>
+  <tr><td>GDELT DOC API</td><td>multilingual long tail</td></tr>
+</table>
+
+<h3>C.3 Quality filter and Comply/Surprise promotion</h3>
+<p>
+  The quality filter is the single acceptance gate; FDs that fail any rule are written to <code>forecasts_dropped.jsonl</code> with a per-FD drop reason for the diagnostic report. The Comply/Surprise binary primary target (&sect;3.2) is computed earlier, at the prior-state annotation stage, by <code>scripts/annotate_prior_state.py</code>; the script consumes the domain-specific prior-state oracle defined in Table 5 and writes both the partition tag (<code>fd_type</code>) and the binary label onto every FD before the quality filter sees it.
+</p>
+
+<h3>C.4 Retrieval routing</h3>
+<p>
+  v2.1 ships per-benchmark retrieval routing rather than a single dense-cosine path:
+</p>
+<ul>
+  <li><strong>ForecastBench:</strong> SBERT (<code>all-mpnet-base-v2</code>) cosine over the unified pool; per-source <code>embedding_threshold</code>, keyword-overlap floor, and lookback-window filter applied before the top-$K$ cut.</li>
+  <li><strong>GDELT-CAMEO:</strong> same dense-cosine machinery, but on the editorial-only article pool (NYT, Guardian, Google News) with a hard <em>actor-pair pre-filter</em> (<code>actor_match_required</code>) so only articles mentioning at least one of the FD's two countries are scored.</li>
+  <li><strong>Earnings:</strong> a relational <em>(ticker, announce_date, lookback)</em> join (<code>scripts/link_earnings_articles.py</code>); SBERT is bypassed entirely for this slice. Empirically, generic dense cosine over a heterogeneous news pool is the wrong default for a slice with a clean structured key, and the ticker-date join fills $\sim 90\%$ of FDs at $K=10$ where cosine left a long tail empty.</li>
+</ul>
+
+<h3>C.5 Embedder choice</h3>
+<p>
+  As of v2.2 (commit <code>a373e89</code>, 2026-04-23), the default embedder for both <code>compute_relevance.py</code> and <code>scripts/etd_dedup.py</code> is <strong>OpenAI Batch</strong> (<code>text-embedding-3-small</code>, native dimension $1536$), submitted via the OpenAI Batch API. This eliminates the GPU dependency from the entire build path and runs at a cost of $\sim \$0.30$ per full v2.1 rebuild. Local SBERT (<code>all-mpnet-base-v2</code>, dim $768$) remains available behind <code>--embedder sbert</code> as the offline / no-network fallback. The two backends maintain parallel caches (<code>article_embeddings.npy</code> for SBERT, <code>article_embeddings_openai.npy</code> for OpenAI) so backend swaps do not invalidate either; the resulting <code>embedding_backend</code> is treated as part of the cutoff identity (recorded in the manifest), and we do not mix backends within a published cutoff folder.
+</p>
+
+<h3>C.6 Reproducibility hooks</h3>
+<p>
+  Every published <code>benchmark/data/{cutoff}/</code> folder ships:
+</p>
+<ul>
+  <li><code>forecasts.jsonl</code>, <code>articles.jsonl</code>: the two primary deliverables.</li>
+  <li><code>benchmark.yaml</code>: the <em>effective</em> build config; pasting it into <code>configs/</code> and re-running the orchestrator reproduces the same deliverable modulo external API non-determinism.</li>
+  <li><code>build_manifest.json</code>: provenance record. Pins the exact <code>git_sha</code>, the model cutoff, the cutoff-buffer days, the per-benchmark FD counts, the article count, the active quality thresholds, and (in v2.2) the active embedder backend.</li>
+  <li><code>checksums.sha256</code>: SHA-256 over the two JSONL files, so any consumer can detect silent corruption between download and use.</li>
+</ul>
+<p>
+  Audit material (drop-reason reports, EDA HTML, per-stage staging snapshots) is routed to <code>benchmark/audit/{cutoff}/</code> and is never mixed into the deliverable folder. The <code>git_sha</code> + <code>benchmark.yaml</code> pair is the complete reproduction recipe.
+</p>
+
+
+<h2>Appendix D: Gold Subset Selection Criteria</h2>
+<p>
+  The gold subset (&sect;5.1.1) is produced by <code>scripts/build_gold_subset.py</code>, which cascades the published v2.1 bundle through nine filters and one stratified sampling step. Every threshold is recorded in the gold folder's <code>build_manifest.json</code>, and a human-readable copy is mirrored into <code>selection_criteria.md</code> next to the data.
+</p>
+
+<h3>D.1 Selection cascade</h3>
+<p>The cascade applies the rules below in order; the first failure drops the FD.</p>
+<ol>
+  <li><strong>Parent quality.</strong> The FD passes the v2.1 quality filter (already enforced upstream).</li>
+  <li><strong>Article count.</strong> $\text{len}(\text{article\_ids}) \geq 8$ (default; configurable). Stronger evidence floor than the parent's $\geq 3$.</li>
+  <li><strong>Distinct publication dates.</strong> $\geq 5$ distinct dates across an FD's article pool. Eliminates single-news-cycle FDs.</li>
+  <li><strong>Forecast horizon.</strong> $\text{resolution\_date} - \text{forecast\_point} \geq 14$ days. Enforces a true two-week prediction horizon.</li>
+  <li><strong>Strict horizon enforcement.</strong> At most $20\%$ of an FD's retained articles may be dated after $\text{forecast\_point} - 14\;\text{days}$. Suppresses nowcasting confounds where most evidence sits in the final pre-event days.</li>
+  <li><strong><code>fd_type</code> inclusion.</strong> Keep only FDs with $\text{fd\_type} \in \{\text{stability}, \text{change}\}$; drop <code>unknown</code> by default (override with <code>--keep-unknown</code>).</li>
+  <li><strong>Article body floor.</strong> Average per-article body $\geq 1{,}500$ chars across the FD's pool. Filters out title-only stubs that survived the parent filter.</li>
+  <li><strong>Source diversity.</strong> $\geq 3$ distinct hostnames across the FD's articles. Filters out wire-republish echo chambers.</li>
+  <li><strong>Per-benchmark predictability.</strong>
+    <ul>
+      <li><em>ForecastBench:</em> drop FDs whose question or background matches a regex denylist for sports finals, lottery draws, awards, and pure entertainment markets.</li>
+      <li><em>GDELT-CAMEO:</em> require at least one of the two actors to be in <code>GEOPOLITICALLY_SIGNIFICANT_ACTORS</code> (G20 + NATO + Middle-East principals + East Asia powers; $\sim 70$ ISO-3 codes).</li>
+      <li><em>Earnings:</em> restrict the ticker to the S&amp;P 100 (large caps with strong analyst coverage and well-defined consensus EPS).</li>
+    </ul>
+  </li>
+</ol>
+<p>
+  After the cascade, the surviving FDs are passed through a <strong>stratified sampler</strong> that hits per-(benchmark, fd_type) targets with deterministic seed. The default targets are: ForecastBench $60$ stability + $40$ change, GDELT-CAMEO $100 + 100$, Earnings $60 + 60$ (total $\leq 420$ FDs). When a stratum has fewer surviving FDs than its target, the sampler takes all of them; the realized stratum sizes are written to <code>meta/distribution.md</code>.
+</p>
+
+<h3>D.2 Self-contained deliverable contract</h3>
+<p>
+  The gold folder is designed to stand alone: a consumer can download just <code>benchmark/data/{cutoff}-gold/</code> and use it without any other file from the parent repo. In addition to the v2.1 deliverables (<code>forecasts.jsonl</code>, <code>articles.jsonl</code>, <code>benchmark.yaml</code>, <code>build_manifest.json</code>, <code>checksums.sha256</code>) it ships:
+</p>
+<ul>
+  <li><code>schema/forecast_dossier.schema.json</code> + <code>article.schema.json</code>: full inline JSON Schema (Draft 2020-12, no <code>$ref</code> across files) plus a plain-English <code>FIELD_REFERENCE.md</code>.</li>
+  <li><code>examples/load.py</code>, <code>validate.py</code>, <code>eval_template.py</code>, <code>usage.md</code>: a stdlib-only loader, an SHA + schema validator, a pick-only baseline-runner skeleton with no EMR-ACH imports, and a five-query usage cookbook.</li>
+  <li><code>selection_criteria.md</code>: a human-readable copy of the cascade above, with the exact thresholds used.</li>
+  <li><code>meta/selection_audit.json</code>, <code>distribution.md</code>, <code>parent_manifest_sha256.txt</code>: per-FD why-kept audit, source / topic / horizon / fd_type breakdown, and the parent <code>forecasts.jsonl</code> SHA-256 so consumers can verify the lineage.</li>
+  <li><code>LICENSE</code> (MIT) + <code>CITATION.cff</code>.</li>
+</ul>
+
+
+<h2>Appendix E: Atomic-Fact Layer (ETD)</h2>
+<p>
+  The pipeline ships an optional <strong>Evidence-as-Time-stamped-Data (ETD)</strong> layer that decomposes raw articles into atomic, individually-verifiable facts. ETD is purely additive: the v2.1 baselines B1-B9 in &sect;5.2 still consume raw articles; the ETD layer is wired into the planned hybrid baseline B10 and the facts-only baseline B10b in <code>docs/V2_2_REFACTOR_BACKLOG.md</code> (Category F).
+</p>
+
+<h3>E.1 Stage 1: Atomic-fact extraction (LLM)</h3>
+<p>
+  <code>scripts/articles_to_facts.py</code> calls <code>gpt-4o-mini</code> per article with the v3 prompt, which requires (a) an explicit anchor table mapping each fact to the article paragraph it came from, (b) a verbatim quoted span from the article body for every fact, and (c) ISO-TimeML temporal anchors. Two structural validators run on every extraction: <code>--strict-dates</code> rejects facts with a publication-date / event-date mismatch, and <code>--strict-quotes</code> (Strategy 3, commit <code>9cbe9a1</code>) rejects facts whose quoted span does not appear verbatim in the article. The prompt has gone through three revisions (v1 $\to$ v3): see &sect;E.4 for the verifier-baseline trajectory.
+</p>
+
+<h3>E.2 Stage 2: SBERT clustering for dedup</h3>
+<p>
+  <code>scripts/etd_dedup.py</code> embeds facts (default backend: OpenAI Batch <code>text-embedding-3-small</code>, fallback SBERT) and clusters by cosine $\geq \tau$ within a per-FD scope. Each cluster reduces to one canonical fact-id while retaining provenance pointers to all source articles. Cost is $\sim \$0.04$ per full v2.1 ETD pass.
+</p>
+
+<h3>E.3 Stage 3: FD linkage</h3>
+<p>
+  An inverted index from canonical fact-ids to FD-ids is built from the article-id $\to$ fd-id map already on every FD (<code>article_ids</code> field). A baseline can then consume facts in two modes: facts-only (B10b: each FD's evidence pool replaced with its linked facts) or hybrid (B10: facts appended to the article pool with explicit provenance markers).
+</p>
+
+<h3>E.4 Production filter and verifier baseline</h3>
+<p>
+  Two outlets, <code>news.fjsen.com</code> and <code>world.people.com.cn</code>, were identified as systematic sources of stale-republish content and are excluded at extraction time via <code>articles_to_facts.py --source-blocklist</code>. The Phase B verifier (a downstream LLM-as-judge that checks every extracted fact against the source article and rates support strength) reports a clean trajectory across prompt revisions: <strong>v1</strong> baseline $15.5\%$ unsupported-at-high-confidence (the worst offender), <strong>v3</strong> with anchor table + verbatim quote requirement $11.8\%$, and <strong>v3 + source blocklist</strong> $\sim 0\%$ (the residual stale-republish failures were the dominant remaining error mode).
+</p>
 
 </body>
 </html>
