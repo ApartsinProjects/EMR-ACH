@@ -265,25 +265,38 @@ def step_relink_gdelt(enabled: bool, dry_run: bool) -> None:
         run_cmd([PY, str(SCRIPTS / "relink_gdelt_context.py")], dry_run=dry_run)
 
 
-def step_relevance(benchmark: str, rebuild: bool, dry_run: bool) -> None:
+def step_relevance(benchmark: str, rebuild: bool, dry_run: bool,
+                   embedder: str = "sbert", openai_model: str = "text-embedding-3-small",
+                   openai_mode: str = "batch") -> None:
     cmd = [PY, str(SCRIPTS / "compute_relevance.py"),
            "--benchmark-filter", benchmark]
     if rebuild:
         cmd.append("--rebuild")
+    if embedder != "sbert":
+        cmd += ["--embedder", embedder,
+                "--openai-model", openai_model,
+                "--openai-mode", openai_mode]
     run_cmd(cmd, dry_run=dry_run)
 
 
 def step_relevance_parallel(benchmarks: list[str], rebuild: bool,
-                            dry_run: bool) -> None:
+                            dry_run: bool, embedder: str = "sbert",
+                            openai_model: str = "text-embedding-3-small",
+                            openai_mode: str = "batch") -> None:
     """Run compute_relevance.py for each benchmark SEQUENTIALLY.
     (Name kept for backward compat.) Earlier version dispatched concurrently
     via ThreadPoolExecutor, but both subprocesses read/write the same
     `data/unified/forecasts.jsonl` + `article_embeddings.npy` + `.fp.txt`,
     producing a write-write race where the last run silently overwrote the
     first. With incremental SBERT caching (per-row fingerprints) the second
-    pass is cheap; sequentialness costs ~1-2 min total, not 7."""
+    pass is cheap; sequentialness costs ~1-2 min total, not 7.
+
+    For --embedder=openai, the cost-dominant work is one OpenAI Batch upload
+    of the full pool (encoded once, scored per benchmark from the cached
+    .npy). Per-benchmark sequential calls still each load the cache.
+    """
     for b in benchmarks:
-        step_relevance(b, rebuild, dry_run)
+        step_relevance(b, rebuild, dry_run, embedder, openai_model, openai_mode)
 
 
 def step_quality(cutoff: str, buffer_days: int, quality_cfg: dict, dry_run: bool) -> None:
@@ -527,6 +540,17 @@ def main():
                          "currently in the unified pool.")
     ap.add_argument("--rebuild-embeddings", action="store_true",
                     help="Pass --rebuild to compute_relevance.py (re-embeds all articles)")
+    ap.add_argument("--embedder", choices=["sbert", "openai"], default="sbert",
+                    help="Embedding backend for the relevance step. 'sbert' uses local "
+                         "GPU SentenceTransformer (default, free, ~2-3h on RTX 2060). "
+                         "'openai' uses OpenAI Batch API (~$0.30 per full-pool encode, "
+                         "~30-60 min wall-clock, no local GPU). Pass-through to "
+                         "compute_relevance.py via --embedder.")
+    ap.add_argument("--openai-model", default="text-embedding-3-small",
+                    help="OpenAI embedding model when --embedder=openai.")
+    ap.add_argument("--openai-mode", choices=["sync", "batch"], default="batch",
+                    help="OpenAI execution mode when --embedder=openai. Batch is 50%% "
+                         "cheaper but adds queue wait; sync is instant but rate-limited.")
     ap.add_argument("--dry-run", action="store_true",
                     help="Print commands without executing")
     ap.add_argument("--fresh", action="store_true",
@@ -659,7 +683,7 @@ def main():
     # 3. Relevance (runs the two benchmark-filter passes IN PARALLEL —
     # see step_relevance_parallel). Saves ~7 min per build.
     rel_targets = [b for b in ("forecastbench", "earnings", "gdelt_cameo") if b in chosen]
-    step_relevance_parallel(rel_targets, args.rebuild_embeddings, args.dry_run)
+    step_relevance_parallel(rel_targets, args.rebuild_embeddings, args.dry_run, args.embedder, args.openai_model, args.openai_mode)
     snapshot("02_after_first_relevance", args.dry_run)
 
     # 4. GDELT-CAMEO context relink (must come BEFORE quality_filter since it
@@ -685,7 +709,7 @@ def main():
     if "gdelt_cameo" in chosen or "forecastbench" in chosen:
         step_unify(args.dry_run)
         snapshot("06_after_reunify", args.dry_run)
-        step_relevance_parallel(rel_targets, args.rebuild_embeddings, args.dry_run)
+        step_relevance_parallel(rel_targets, args.rebuild_embeddings, args.dry_run, args.embedder, args.openai_model, args.openai_mode)
         if "gdelt_cameo" in chosen:
             step_relink_gdelt(True, args.dry_run)
         snapshot("07_after_re_relevance_and_relink", args.dry_run)

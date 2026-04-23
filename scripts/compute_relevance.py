@@ -35,7 +35,8 @@ from sentence_transformers import SentenceTransformer, util
 # Fast JSONL I/O (orjson if available, stdlib json fallback) — see _fast_jsonl.py
 import sys as _sys
 from pathlib import Path as _Path
-_sys.path.insert(0, str(_Path(__file__).parent))
+_sys.path.insert(0, str(_Path(__file__).parent))         # _fast_jsonl
+_sys.path.insert(0, str(_Path(__file__).parent.parent))  # src.* (e.g. openai_embeddings)
 from _fast_jsonl import loads as _j_loads, dumps as _j_dumps
 
 ROOT = Path(__file__).parent.parent
@@ -183,6 +184,16 @@ def main():
     ap.add_argument("--rebuild", action="store_true")
     ap.add_argument("--benchmark-filter", default="forecastbench",
                     help="Only score forecasts in this benchmark; articles are also filtered to this provenance family")
+    ap.add_argument("--embedder", choices=["sbert", "openai"], default="sbert",
+                    help="Embedding backend. 'sbert' uses local SentenceTransformer "
+                         "(default, free, GPU-bound). 'openai' uses src.common."
+                         "openai_embeddings via the OpenAI Batch API (~$0.30 per "
+                         "full-pool encode, ~30-60 min wall-clock, no local GPU).")
+    ap.add_argument("--openai-model", default="text-embedding-3-small",
+                    help="OpenAI embedding model when --embedder=openai.")
+    ap.add_argument("--openai-mode", choices=["sync", "batch"], default="batch",
+                    help="OpenAI execution path when --embedder=openai. Batch is "
+                         "50% cheaper but adds ~30-60 min wall-clock for queue.")
     args = ap.parse_args()
 
     cfg = load_cfg()
@@ -227,28 +238,49 @@ def main():
     scored_forecasts = [f for f in forecasts if f["id"] in scored_ids]
 
     print(f"Loaded {len(forecasts)} total forecasts, {len(articles)} in-scope articles")
-    print(f"Loading SBERT model: {model_name} (device={args.device})")
-    model = SentenceTransformer(model_name, device=args.device)
-    # fp16 on CUDA: ~2x throughput on RTX 2060, accuracy delta < 0.001 on
-    # cosine retrieval (verified empirically against the same v1 mpnet
-    # weights). CPU path stays fp32.
-    if args.device == "cuda":
-        try:
-            model = model.half()
-            print("Enabled fp16 (CUDA half precision) for ~2x SBERT throughput.")
-        except Exception as e:
-            print(f"[warn] fp16 enable failed: {e}; staying fp32.")
 
-    art_emb = load_or_embed(
-        model, articles,
-        lambda a: (a.get("title", "") + "\n" + a.get("text", "")[:max_chars]).strip() or " ",
-        ART_EMB, batch, "articles", args.rebuild,
-    )
-    fc_emb = load_or_embed(
-        model, scored_forecasts,
-        lambda q: (q.get("question", "") + "\n" + q.get("background", "")[:max_chars]).strip() or " ",
-        FC_EMB, batch, "forecasts", args.rebuild,
-    )
+    # Embedder dispatch: SBERT (default, local GPU) vs OpenAI (Batch API).
+    # OpenAI path uses parallel cache files (`*_embeddings_openai.npy`) so the
+    # two backends never collide and you can A/B them on the same data tree.
+    art_text_fn = lambda a: (a.get("title", "") + "\n" + a.get("text", "")[:max_chars]).strip() or " "
+    fc_text_fn  = lambda q: (q.get("question", "") + "\n" + q.get("background", "")[:max_chars]).strip() or " "
+
+    if args.embedder == "openai":
+        from src.common.openai_embeddings import load_or_embed_openai
+        art_cache = ART_EMB.with_name(ART_EMB.stem + "_openai.npy")
+        fc_cache  = FC_EMB.with_name(FC_EMB.stem + "_openai.npy")
+        print(f"Embedder: OpenAI ({args.openai_model}, mode={args.openai_mode})")
+        print(f"  article cache:  {art_cache}")
+        print(f"  forecast cache: {fc_cache}")
+        art_emb = load_or_embed_openai(
+            articles, art_text_fn, art_cache,
+            model=args.openai_model, mode=args.openai_mode, rebuild=args.rebuild,
+        )
+        fc_emb = load_or_embed_openai(
+            scored_forecasts, fc_text_fn, fc_cache,
+            model=args.openai_model, mode=args.openai_mode, rebuild=args.rebuild,
+        )
+    else:
+        print(f"Loading SBERT model: {model_name} (device={args.device})")
+        model = SentenceTransformer(model_name, device=args.device)
+        # fp16 on CUDA: ~2x throughput on RTX 2060, accuracy delta < 0.001 on
+        # cosine retrieval (verified empirically against the same v1 mpnet
+        # weights). CPU path stays fp32.
+        if args.device == "cuda":
+            try:
+                model = model.half()
+                print("Enabled fp16 (CUDA half precision) for ~2x SBERT throughput.")
+            except Exception as e:
+                print(f"[warn] fp16 enable failed: {e}; staying fp32.")
+
+        art_emb = load_or_embed(
+            model, articles, art_text_fn,
+            ART_EMB, batch, "articles", args.rebuild,
+        )
+        fc_emb = load_or_embed(
+            model, scored_forecasts, fc_text_fn,
+            FC_EMB, batch, "forecasts", args.rebuild,
+        )
 
     # Parse article publication dates once
     art_dates: list[datetime | None] = []
