@@ -196,6 +196,56 @@ Not every FD's evidence lives in GDELT DOC. The v2.2 contract specifies which so
 
 ---
 
+## 4a. Per-benchmark retrieval routing
+
+The hybrid contract in Section 4 names source cascades per benchmark. It leaves implicit a stronger claim that shipped today (commit `ac0b031`): **generic SBERT cosine over the unified article pool is the wrong default for structured-domain benchmarks.** Each benchmark has a natural relational key that outperforms dense retrieval on its slice.
+
+| Benchmark | Retrieval mode | Mechanism | Typical cost per build | Owner |
+|---|---|---|---|---|
+| `earnings` | Ticker plus date relational join | `(ticker, announce_date - 90d .. announce_date)` look-up in per-article metadata; no embedding involved | ~1 sec for 535 FDs | [`scripts/link_earnings_articles.py`](../scripts/link_earnings_articles.py) |
+| `gdelt_cameo` | SBERT cosine with actor-pair prefilter over editorial-only pool | Filter articles to `source in editorial_outlets AND actor_pair_match`; then SBERT top-K | GPU-bound; roughly 5-10 min at 9.6k FDs times 25k editorial articles | [`scripts/compute_relevance.py`](../scripts/compute_relevance.py) |
+| `forecastbench` | SBERT cosine over full pool | Unchanged; full 220k-article pool | GPU-bound; roughly 2-3 min at 1.2k FDs | [`scripts/compute_relevance.py`](../scripts/compute_relevance.py) |
+
+**Implementation today**: the earnings linker bypasses `compute_relevance.py` entirely and writes `article_ids` directly on the FD using ticker plus announce-date windows that are already present on both the FD (`_earnings_meta.ticker`, `_earnings_meta.announce_date`) and the per-article metadata (`ticker`, `publish_date`). SBERT never sees an earnings FD.
+
+**Rationale**: for earnings, every article already carries the ground-truth relational key. A dense retrieval model can only approximate this join at a floating-point cost. The structured domain is not a retrieval problem; it is a filter problem. The same pattern applies wherever a benchmark's evidence has an entity identifier more discriminative than its title plus body embedding (tickers, CAMEO actor pairs, Polymarket slugs).
+
+**Future work (backlog A13)**: factor the per-benchmark router into `src/common/retrieval_router.py` so `compute_relevance.py` dispatches on `benchmark` rather than hard-coding the same SBERT cosine for every slice. This is related to but not the same as A4 (encode-once-score-many); for earnings, A4's encoding pass is pure waste because the earnings slice will never be scored by cosine.
+
+**Consequence for §4**: row 3 of the hybrid contract table ("Earnings") names sources (SEC EDGAR, Finnhub, GDELT DOC), not a retrieval mechanism. The routing layer described here composes with that cascade: sources provide articles with ticker plus date metadata, the router provides the join that selects which articles attach to which FD.
+
+See also [`V2_2_END_TO_END_AUDIT.md`](V2_2_END_TO_END_AUDIT.md) Section 4.2 and Section 7.3 for the relationship between the router and the shipped OpenAI embeddings path.
+
+---
+
+## 4b. Reuse contract: when stages may skip work
+
+v2.1's resume logic is a mix of per-row fingerprint caches (relevance, ETD Stage 1), per-FD `--skip-completed` flags (fetchers), and full-stage rebuilds (unify, quality filter, publish). Today's build cycle surfaced two concrete failure modes from the implicit reuse contract (see [`V2_2_END_TO_END_AUDIT.md`](V2_2_END_TO_END_AUDIT.md) Section 3.3 and Section 3.5):
+
+1. **`data/earnings/earnings_articles.jsonl` was deleted between fetcher completion and publish**. The unify step silently loaded an empty pool; the deliverable shipped with zero earnings articles before the bug was caught. Root cause: per-benchmark article files are not tracked as first-class artefacts, so `step_publish` has no pre-flight integrity check.
+2. **`step_publish` overwrote a fresh snapshot-09 `forecasts.jsonl` with a stale Apr 21 copy**. The publisher copied from the wrong source path; there was no post-copy line-count assertion.
+
+Both failures reduce to the same missing invariant: **every stage must declare a reuse key, an invalidation trigger, and an integrity check against its declared outputs before the next stage begins.** The table below formalizes this for v2.2.
+
+| Stage | Reuse key | Invalidation trigger | Safe to resume mid-stage | Notes |
+|---|---|---|---|---|
+| Raw data (GDELT KG, yfinance, FB clone) | Path mtime plus cutoff-window hash | Window changes, upstream source version changes | yes (per shard) | One-time; rare invalidations |
+| Per-benchmark article files (`data/{bench}/{bench}_articles.jsonl`) | File exists + non-empty + `fd_id` coverage >= `quality.min_articles * n_fds` threshold | Any missing file, coverage shortfall, or fetcher config delta (sources, lookback) | yes (per FD via `--skip-completed`) | **If any file is missing the fetchers run from scratch; no silent skip.** First-class artefacts, checksummed in `step_publish`. |
+| Unified pool (`data/unified/{articles,forecasts}.jsonl`) | Fingerprint of the union of per-benchmark file SHA256s | Any per-benchmark file changes | no (full overwrite) | Fast rebuild; cheap to invalidate |
+| Embedding caches (`*_embeddings{,_openai}.npy` plus `.fp.txt`) | Per-row MD5 fingerprint over text | Text changed, embedding model changed, backend changed (native-dim changed for OpenAI) | yes (per row) | Already shipped; see `compute_relevance.py:_per_row_fingerprints` and `openai_embeddings.py:_fingerprint_rows` |
+| Stage-1 ETD facts (`facts.v1.jsonl`) | `(article_id, extract_run)` where `extract_run = prompt_sha1 plus model plus config` | Prompt changed, model changed, article text changed | yes (per article via `--skip-completed`) | Already shipped; see `articles_to_facts.py:extract_runs.jsonl` |
+| Stage 2 ETD (dedup) | Digest of Stage-1 output fingerprints | Any Stage-1 digest change | no (full re-cluster) | Non-incremental today; backlog B18 |
+| Stage 3 ETD (link) | `(stage2_digest, published_forecasts_digest)` tuple | Stage 2 digest or published FD set changes | no | Backlog E19: currently silently reads stale Stage-2 output |
+| Publication manifest (`build_manifest.json`) | Transitive dependency hash of every upstream stage digest | Any upstream invalidation | no | Published atomically; see Section 7.1 |
+
+**Stage-reuse CLI surface**: the existing `scripts/build_benchmark.py --skip-news-fetch` flag (shipped today) implements the per-benchmark article-file reuse row for fetchers. Additional `--skip-` flags for unify, relevance, and publish are tracked in backlog G6.
+
+**Integrity checks at publish**: `step_publish` must assert (a) line-count of `forecasts.jsonl` does not decrease between source and destination, (b) every `article_id` referenced from `forecasts.jsonl` exists in `articles.jsonl`, and (c) `benchmark.yaml` mentions every benchmark that shipped rows. Today none of these checks runs; backlog G5.
+
+See backlog Category G for the landing plan.
+
+---
+
 ## 5. Cross-benchmark embedding cache (encode-once, score-many)
 
 ### 5.1 The problem
@@ -263,6 +313,14 @@ Some users have no GPU. v2.2 ships an optional drop-in: replace local SBERT with
 
 ### 6.2 Schema-compatible drop-in
 
+**Shipped state (commit `9a27816` plus `a373e89`, 2026-04-23)**: the OpenAI backend ships as a standalone module at [`src/common/openai_embeddings.py`](../src/common/openai_embeddings.py) (not the unified `embeddings_backend.py` specified below) plus CLI driver [`scripts/embed_pool_openai.py`](../scripts/embed_pool_openai.py). It diverges from the §6.2 design in three ways:
+
+1. **Native dim, no projection**: the shipped module writes the model's native dimension (1536 for `text-embedding-3-small`; 3072 for `-large`) without truncating to 768. The cache files therefore have a different shape than the SBERT cache.
+2. **Parallel caches, not a unified cache**: outputs go to `data/unified/article_embeddings_openai.npy` plus `forecast_embeddings_openai.npy` (separate `_openai` suffix); the SBERT cache at `article_embeddings.npy` is untouched. Two parallel caches coexist; switching backends does NOT invalidate the SBERT cache.
+3. **CLI wiring**: [`scripts/compute_relevance.py`](../scripts/compute_relevance.py) accepts `--embedder {sbert,openai}` and [`scripts/build_benchmark.py`](../scripts/build_benchmark.py) passes the flag through. Default is `sbert`.
+
+The unified `embeddings_backend.py` API below remains the design target; backlog A6 wraps the shipped module behind it. Until A6 lands, the parallel-cache approach is the interim contract and should be documented as such in the cache-invalidation matrix (§7.2).
+
 New module `src/common/embeddings_backend.py` exposes:
 
 ```
@@ -274,7 +332,7 @@ The OpenAI backend:
 
 1. Submits Batch jobs in chunks of 50k inputs (well under the 50k-line per-batch limit).
 2. Polls until done (or returns immediately if `--async`, leaving a job-id sidecar for a later resume).
-3. Pulls results, normalizes to dim=768 by truncate-then-renormalize (text-embedding-3-small is 1536-dim native; we project to 768 to stay schema-compatible with the SBERT cache).
+3. Pulls results. (Design called for truncate-to-768 for cache compatibility with SBERT; the shipped module preserves native dim and writes a parallel cache instead. See the "Shipped state" note at the top of §6.2.)
 
 Cost estimate: 220k articles times 500 char trunc plus 12k FDs at 100 chars equals ~110M tokens at $0.013/M Batch equals roughly $1.50 per cold rebuild. The earlier $0.30 estimate in the design discussion was for the FD-only encode; the article side dominates.
 
@@ -305,8 +363,10 @@ Every stage that writes a file pair (`X.jsonl`, `X.meta.json`) must satisfy: `X.
 | `data/gdelt_doc/raw/*.jsonl.zst` | window changes, language filter changes |
 | `data/gdelt_doc/index/*.faiss` | embedding model name or revision changes |
 | `data/gdelt_doc/index/*.parquet` | shard size changes (rebuild triggers reshard) |
-| `data/unified/article_embeddings.npy` plus `.fp.txt` | per-row fingerprint mismatch (text changed); embedding model changed; backend changed |
-| `data/unified/forecast_embeddings.npy` plus `.fp.txt` | same as above for forecasts |
+| `data/unified/article_embeddings.npy` plus `.fp.txt` (SBERT) | per-row fingerprint mismatch (text changed); embedding model changed |
+| `data/unified/forecast_embeddings.npy` plus `.fp.txt` (SBERT) | same as above for forecasts |
+| `data/unified/article_embeddings_openai.npy` plus `.fp.txt` (OpenAI) | per-row fingerprint mismatch; OpenAI model changed; native-dim changed (model upgrade). Parallel to SBERT cache; backend swap does NOT invalidate either cache |
+| `data/unified/forecast_embeddings_openai.npy` plus `.fp.txt` (OpenAI) | same as above for forecasts |
 | `data/{bench}/{bench}_articles.jsonl` | source list changes; lookback window changes; primary-source switch in the hybrid contract |
 | Per-FD relevance results in `forecasts.jsonl[article_ids]` | upstream embeddings invalidated; per-source threshold changed |
 
@@ -454,3 +514,16 @@ Explicitly not in this design:
 | Version | Date | Summary |
 |---|---|---|
 | 2.2-draft | 2026-04-22 | Initial design doc. Documents GDELT DOC bulk pipeline, hybrid retrieval contract, encode-once-score-many cache, optional OpenAI Batch backend, resumability invariants, and refactor backlog. No code changes yet. |
+| 2.2-draft-r2 | 2026-04-23 | Post-audit update. Added §4a (per-benchmark retrieval routing; earnings ticker-date join shipped), §4b (reuse contract table), §6.2 shipped-state note (native dim, parallel cache), §7.2 OpenAI cache rows, §14 (post-publish orchestrator pointer). Reflects commits `9a27816`, `a373e89`, `ac0b031`, `9cbe9a1`, `e22395c`. Cross-references [`V2_2_END_TO_END_AUDIT.md`](V2_2_END_TO_END_AUDIT.md) Sections 4, 7, 8. |
+
+---
+
+## 14. Post-publish orchestrator (pointer)
+
+The ETD post-publish chain is out of scope for the v2.2 build-system refactor (§11) but is the documented bridge between the v2.1 published bundle and the Category F baselines (F1-F4 in [`V2_2_REFACTOR_BACKLOG.md`](V2_2_REFACTOR_BACKLOG.md)). Production entrypoint shipped 2026-04-23 (commit `e22395c`):
+
+[`scripts/etd_post_publish.py`](../scripts/etd_post_publish.py) sequences delta-compute, Phase D Stage-1 extract, Stage 2 dedup, Stage 3 link, production filter, audit, per-benchmark facts-vs-articles compare. Each step is independently `--skip-`able. Outputs: `data/etd/facts.v1_production_{cutoff}.jsonl` plus per-bench audits in `data/etd/audit/`.
+
+**Documentation gap (flagged for human)**: [`docs/PIPELINE.md`](PIPELINE.md) §3.5 should describe this orchestrator's CLI surface, default flags, and stage sequence. See [`V2_2_END_TO_END_AUDIT.md`](V2_2_END_TO_END_AUDIT.md) Section 4.4 and backlog D8.
+
+**Prompt-default divergence (flagged for human)**: [`scripts/articles_to_facts.py`](../scripts/articles_to_facts.py) defaults to `etd_extraction_v1.txt`; [`scripts/etd_post_publish.py`](../scripts/etd_post_publish.py) defaults to `etd_extraction_v3.txt`. A user who runs `articles_to_facts.py` directly gets the v1 prompt with its 15.5%-unsupported floor instead of the v3 production 11.8%. See audit Section 3.3 drift note and backlog D9.

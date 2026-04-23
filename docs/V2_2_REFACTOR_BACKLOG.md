@@ -57,6 +57,10 @@ The 3-minute one-time cost is below the optimization waterline. Documented for c
 Files: `query_gdelt_doc_index.py`. Effort: S. Priority: P0. Deps: A3.
 Inverts v2.1's "fetch bodies first, filter later" to "filter first, fetch survivors". This is half the wall-clock win; called out separately because it is easy to forget when implementing A3.
 
+### A13. Per-benchmark retrieval router
+Files: new `src/common/retrieval_router.py`; `scripts/compute_relevance.py` refactor. Effort: M. Priority: P1. Deps: B1.
+Dispatch on `benchmark` instead of hard-coding SBERT cosine for every slice. Earnings uses a ticker plus date relational join (shipped in commit `ac0b031` at [`scripts/link_earnings_articles.py`](../scripts/link_earnings_articles.py), ~1 sec for 535 FDs, zero embedding work). GDELT-CAMEO adds an actor-pair prefilter over the editorial-only pool. ForecastBench stays full-pool SBERT. See [`V2_2_ARCHITECTURE.md`](V2_2_ARCHITECTURE.md) §4a. **Supersedes A4 for earnings**: encode-once-score-many saves nothing on the earnings slice because dense retrieval is the wrong tool; A4 still applies to FB plus GDELT-CAMEO.
+
 ---
 
 ## Category B, Architecture (drift containment)
@@ -116,6 +120,10 @@ Currently orphaned (not invoked from build_benchmark). Either wire it as a fallb
 ### B14. Move `download_gdelt_news.py`, `download_metaculus.py`, `prepare_data.py`, `scrape_market_pages.py` to `scripts/archive/`
 Files: as listed; check call sites in the orchestrator. Effort: S. Priority: P2. Deps: confirmed unreferenced.
 These are pre-v2.0 artifacts. Surveyed but not invoked by `build_benchmark.py` orchestrator.
+
+### B15. Atomic writes for in-place `forecasts.jsonl` plus `articles.jsonl` mutators
+Files: `scripts/annotate_prior_state.py`, `scripts/compute_relevance.py`, `scripts/relink_gdelt_context.py`, `scripts/fetch_gdelt_text.py`, `scripts/fetch_article_text.py`. Effort: M. Priority: P0. Deps: none.
+Every script that mutates `data/unified/forecasts.jsonl` or `data/unified/articles.jsonl` in place must write to `.tmp` then atomic-rename. Today a `Ctrl-C` mid-write leaves a mixed state that the next build resumes against silently. Strengthens B6 (which covers meta files only) to cover data files. See [`V2_2_END_TO_END_AUDIT.md`](V2_2_END_TO_END_AUDIT.md) Sections 3.5 and 8.1.
 
 ---
 
@@ -315,12 +323,54 @@ Files: `paper/index.html` §6 results. Effort: S. Priority: P1. Deps: F1, F2 res
 
 New table that decomposes article-only vs hybrid vs facts-only on the change-subset headline metric, per benchmark. Bolded delta cell makes the structured-evidence claim explicit.
 
+### F5. Pin production filter recipe in `build_manifest.json`
+Files: `scripts/build_benchmark.py` `step_publish`; `scripts/etd_post_publish.py` (read-side mirror). Effort: S. Priority: P0. Deps: none.
+
+Persist the production-filter recipe (`--source-blocklist news.fjsen.com,world.people.com.cn --min-confidence high --polarity asserted --no-future --require-linked-fd`) into `build_manifest.json` so B10 / B10b / F3 baselines are reproducible from the published bundle alone. Today the recipe lives only in `etd_post_publish.py:51` `DEFAULT_BLOCKLIST` and the orchestrator CLI defaults; a downstream consumer cannot reconstruct the production fact set from the deliverable. Elevates backlog C10 from P1 to P0 because Category F reproducibility depends on it. See [`V2_2_END_TO_END_AUDIT.md`](V2_2_END_TO_END_AUDIT.md) Section 4.6 and Section 8.5.
+
+---
+
+---
+
+## Category G, Reuse and reproducibility
+
+Motivated by today's two production failures (see [`V2_2_END_TO_END_AUDIT.md`](V2_2_END_TO_END_AUDIT.md) Section 3.3 and 3.5, and [`V2_2_ARCHITECTURE.md`](V2_2_ARCHITECTURE.md) §4b):
+
+1. `data/earnings/earnings_articles.jsonl` was deleted between fetcher completion and publish; unify silently loaded an empty pool.
+2. `step_publish` overwrote a fresh snapshot-09 `forecasts.jsonl` with a stale Apr 21 copy; no integrity check fired.
+
+Both reduce to the same root cause: stages do not declare reuse keys, invalidation triggers, or post-stage integrity invariants.
+
+### G1. Implement the reuse-contract table
+Files: new `src/common/stage_cache.py`; `scripts/build_benchmark.py` wiring (in-flight; do not touch until current build completes). Effort: M. Priority: P0. Deps: B5.
+Implement the per-stage reuse keys, invalidation triggers, and resume invariants spelled out in [`V2_2_ARCHITECTURE.md`](V2_2_ARCHITECTURE.md) §4b table. Each stage exposes `cache_key()`, `is_valid()`, `invalidate()`. The orchestrator queries these instead of the current ad-hoc `--skip-*` flag soup.
+
+### G2. Treat per-benchmark article files as first-class artefacts
+Files: `scripts/build_benchmark.py` `step_publish`; new `data/{bench}/{bench}_articles.checksums.json` sidecar. Effort: S. Priority: P0. Deps: none.
+`step_publish` records SHA256 plus line count plus `fd_id` coverage for `data/forecastbench/forecastbench_articles.jsonl`, `data/gdelt_cameo/gdelt_cameo_articles.jsonl`, `data/earnings/earnings_articles.jsonl` at copy time. Refuses to publish if any file is missing or empty. Prevents today's "earnings_articles.jsonl got deleted between fetch and publish" failure mode.
+
+### G3. Fix `step_publish` silent overwrite bug
+Files: `scripts/build_benchmark.py` `step_publish` (in-flight; do not touch until current build completes). Effort: S. Priority: P1. Deps: none.
+Today `step_publish` shipped the stale Apr 21 `forecasts.jsonl` instead of the fresh snapshot-09 file because the source path resolved to the wrong staged directory. Add an explicit `assert source.stat().st_mtime >= manifest.snapshot_09_mtime` plus a line-count comparison; fail the publish if either invariant breaks.
+
+### G4. Fix `quality_filter.py` silent no-op
+Files: `scripts/quality_filter.py`; `scripts/build_benchmark.py` `step_quality_filter` (in-flight). Effort: S. Priority: P1. Deps: none.
+Today's audit (Section 3 of the audit doc) found 1,555 zero-article FDs survived the `08_after_quality_filter` stage; `forecasts_filtered.jsonl`, `quality_meta.json`, and the change plus stability slice files were NOT emitted despite prior memory claims they were. Either: (a) emit `quality_meta.json` per spec and have the orchestrator fail fast if it is missing, or (b) add an audit-level assertion that `n_after_filter < n_before_filter` and fail the build if not.
+
+### G5. Integrity check at publish time
+Files: `scripts/build_benchmark.py` `step_publish` (in-flight). Effort: S. Priority: P1. Deps: G2.
+Three invariants asserted post-copy: (a) line count of `forecasts.jsonl` does not decrease between source and destination; (b) every `article_id` referenced from `forecasts.jsonl` exists in the published `articles.jsonl`; (c) `benchmark.yaml` mentions every benchmark that contributes rows. Fail the publish on any violation.
+
+### G6. `scripts/reuse_check.py` CLI for dry-audit of reuse
+Files: new `scripts/reuse_check.py`. Effort: S. Priority: P2. Deps: G1.
+Reports which stages would be reused on a fresh build given the current cache state: `python scripts/reuse_check.py --cutoff 2026-01-01` prints a per-stage table of `reuse_key | cached? | last_invalidated | next_action`. No side effects. Useful for debugging "why did this stage rerun" questions.
+
 ---
 
 ## Summary by priority
 
-- **P0 (blocks v2.2 launch)**: A1, A2, A3, A4, A6, A12, B1, B8, C1, C2, C3, D1, D7, E11, E12, E13.
-- **P1 (should land in v2.2)**: A5, A7, A8, A10, B2, B3, B4, B5, B6, B7, C4, C5, C6, C7, C10, D2, D3, D4, D5, E4, **F1, F4**.
-- **P2 (nice-to-have or follow-on)**: A9, A11, B9, B10, B11, B12, B13, B14, C8, C9, D6, E1, E2, E3, E5, E6, E7, E8, E9, E10, E14, E15, E16, E17, E18, **F2, F3**.
+- **P0 (blocks v2.2 launch)**: A1, A2, A3, A4, A6, A12, B1, B8, B15, C1, C2, C3, D1, D7, E11, E12, E13, **F5, G1, G2**.
+- **P1 (should land in v2.2)**: A5, A7, A8, A10, **A13**, B2, B3, B4, B5, B6, B7, C4, C5, C6, C7, C10, D2, D3, D4, D5, E4, F1, F4, **G3, G4, G5**.
+- **P2 (nice-to-have or follow-on)**: A9, A11, B9, B10, B11, B12, B13, B14, C8, C9, D6, E1, E2, E3, E5, E6, E7, E8, E9, E10, E14, E15, E16, E17, E18, F2, F3, **G6**.
 
-Total: 16 P0, 22 P1, 27 P2 = 65 items.
+Total: 20 P0, 26 P1, 28 P2 = 74 items.
