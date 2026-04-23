@@ -425,6 +425,20 @@ Files: `scripts/unify_articles.py`. Effort: S. Priority: P1. Deps: none.
 Files: `scripts/build_benchmark.py` (`step_publish`). Effort: S. Priority: P1. Deps: none.
 1,049 / 1,299 earnings article_ids referenced by earnings FDs in `benchmark/data/2026-01-01/forecasts.jsonl` do NOT resolve in the same cutoff's `articles.jsonl`. Root cause is a pipeline ordering hazard: when an article fetcher (Finnhub / Google News / EDGAR enrichment) writes to `data/earnings/earnings_articles.jsonl` AFTER `unify_articles.py` built the pool but BEFORE `link_earnings_articles.py` ran, the linker stores `art_id(url)` values referring to URLs that were never added to the unified pool, and `step_publish` silently drops those references. Shipped: `step_publish` now computes `dangling = referenced_ids - pool_ids`, logs `WARN {n} dangling refs ({pct:.1f}%)`, and dumps the list to `meta/dangling_article_ids.txt` so the issue is visible at publish time. Real fix (v2.2): re-run `unify_articles.py` if any fetcher's mtime is newer than the unified pool's mtime, via the `reuse_check.py` (G6) cache-key machinery.
 
+### H6. v2.2 benchmark rebuild: real 14-day horizon + CC-News lookback **Status**: OPEN (P0 blocker)
+Files: `scripts/build_benchmark.py`, `scripts/fetch_cc_news_archive.py`, `scripts/build_cc_news_index.py`, `scripts/query_cc_news_index.py`, `configs/*.yaml`. Effort: L. Priority: P0. Deps: H1, H2, CC-News archive download (~40-60 GB per month slice).
+The v2.1 benchmark sets `forecast_point = resolution_date` across every track: earnings forecasts on earnings day, gdelt-cameo on event day, forecastbench at resolution. Net consequence: **horizon = 0-3 days for all 6,294 FDs**, so no FD in v2.1 supports genuine multi-week forecasting. This blocks the paper's 14-day-horizon claim and any pre-event leakage probe worth its name.
+v2.2 rebuild required to support the research goal ("14-day forecast horizon based on 2-3 months of news"):
+  1. Redefine `forecast_point = resolution_date - horizon_days` (default 14; make CLI-configurable).
+  2. Query article pool from `[forecast_point - lookback_days, forecast_point]` (default 90); strictly exclude any article dated after `forecast_point`.
+  3. Article source = CC-News archive (`scripts/fetch_cc_news_archive.py` + index). CC-News provides true trafilatura-extracted publish_date on every record (obviates H1) and covers 2016-present with daily resolution.
+  4. Rebuild ETD Stage-1 extract on CC-News articles (large delta; budget 1-2 hours OpenAI Batch per month slice).
+  5. Re-run etd_post_publish + build_gold_subset. Expect gold yield to jump from 81 to 300-500 FDs with balanced `fd_type` stratification once `distinct_days` is no longer collapsed.
+Design notes:
+  - Keep v2.1 benchmark intact for reproducibility (tagged at `v2.1-data-ready`, `1dca08a`).
+  - Publish v2.2 under `benchmark/data/{cutoff}-h14/` suffix to disambiguate.
+  - Paper §5.1 should acknowledge v2.1 as "retrospective evaluation (horizon=0)" and v2.2 as "prospective evaluation (horizon=14)".
+
 ### H3. GDELT-CAMEO hypothesis set skew: 74% majority class on Comply **Status**: OPEN
 Files: `scripts/build_gdelt_cameo_benchmark.py` (primary target derivation). Effort: M. Priority: P2. Deps: none.
 Current gdelt-cameo composition: 4,446/5,975 (74%) `ground_truth=Comply`, 1,205 Surprise, 324 legacy ternary. The Comply skew means most FDs resolve trivially (country pair with no active conflict -> "diplomatic interaction persists"), which compresses the score gap between methods and makes per-benchmark accuracy dominated by the stability class. v2.2 mitigation options: (a) rebalance target construction via smarter actor-pair sampling biased toward high-variance pairs (Iran-Israel, Russia-Ukraine, etc.), (b) expose `fd_type=change` filter as a first-class evaluation slice in the paper, (c) narrow the GDELT-CAMEO track to country pairs with a minimum Surprise rate >= 25% in historical data. Paper-side mitigation via gold subset's `fd_type` stratification is already in place but was masked by H1.
