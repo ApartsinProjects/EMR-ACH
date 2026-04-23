@@ -107,6 +107,12 @@ def main() -> int:
                          "(default: benchmark/data/{cutoff}/forecasts.jsonl).")
     ap.add_argument("--cutoff", default=None,
                     help="Cutoff to resolve --fds default path.")
+    ap.add_argument("--source-blocklist", default=None,
+                    help="Comma-separated list of source domains to drop. "
+                         "Recommended for production: known stale-republish outlets "
+                         "whose publish_date metadata disagrees with body event dates "
+                         "(see Phase C verifier audit). Substring match against "
+                         "fact.source; case-insensitive.")
     args = ap.parse_args()
 
     inp = Path(args.inp)
@@ -136,6 +142,11 @@ def main() -> int:
                     continue
         print(f"[etd_filter] indexed {len(fd_bench)} FDs from {fd_path}")
 
+    blocklist = set()
+    if args.source_blocklist:
+        blocklist = {s.strip().lower() for s in args.source_blocklist.split(",") if s.strip()}
+        print(f"[etd_filter] source-blocklist: {sorted(blocklist)}")
+
     drops: Counter = Counter()
     kept: list[dict] = []
     n_in = 0
@@ -150,6 +161,11 @@ def main() -> int:
                 drops["malformed_json"] += 1
                 continue
 
+            if blocklist:
+                src = (fact.get("source") or "").lower()
+                if any(b in src for b in blocklist):
+                    drops["source_blocklist"] += 1
+                    continue
             if min_conf_rank:
                 cr = CONFIDENCE_RANK.get(fact.get("extraction_confidence") or "", 0)
                 if cr < min_conf_rank:
@@ -213,6 +229,7 @@ def main() -> int:
             "min_cluster_size": args.min_cluster_size,
             "require_linked_fd": args.require_linked_fd,
             "benchmark": args.benchmark,
+            "source_blocklist": sorted(blocklist) if blocklist else None,
         },
         "generated_at": datetime.utcnow().isoformat() + "Z",
     }
