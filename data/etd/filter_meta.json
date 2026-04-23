@@ -1,13 +1,13 @@
 {
   "input": "E:\\Projects\\ACH\\data\\etd\\facts.v1_linked.jsonl",
-  "output": "E:\\Projects\\ACH\\data\\etd\\facts.v1_production_2026-01-01.jsonl",
+  "output": "E:\\Projects\\ACH\\data\\etd\\facts.v1_production_2026-01-01-h14.jsonl",
   "n_in": 78630,
-  "n_out": 50821,
+  "n_out": 403,
   "drops": {
     "source_blocklist": 38,
+    "no_linked_fd": 67221,
     "polarity": 9951,
-    "min_confidence": 1017,
-    "no_linked_fd": 16803
+    "min_confidence": 1017
   },
   "filters": {
     "min_confidence": "high",
@@ -23,5 +23,5 @@
       "world.people.com.cn"
     ]
   },
-  "generated_at": "2026-04-23T14:41:06.521654Z"
+  "generated_at": "2026-04-23T19:57:19.311127Z"
 }
