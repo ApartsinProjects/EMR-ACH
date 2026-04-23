@@ -9,6 +9,25 @@
 
 ---
 
+## 0. Version map (v2.1 shipped vs v2.2 in flight)
+
+This document is the **v2.1 canonical reference**. Where v2.2 introduces a
+new path or default, the relevant location is listed here for cross-reference.
+For the full v2.2 design see [`docs/V2_2_ARCHITECTURE.md`](V2_2_ARCHITECTURE.md)
+and [`docs/V2_2_REFACTOR_BACKLOG.md`](V2_2_REFACTOR_BACKLOG.md).
+
+| Concern | v2.1 (shipped) | v2.2 (rolling out) |
+|---|---|---|
+| Top-level orchestrator | [`scripts/build_benchmark.py`](../scripts/build_benchmark.py) | same; gains `--embedder openai` and `--skip-news-fetch` flags |
+| GDELT evidence retrieval | DOC API per-FD via [`scripts/fetch_gdelt_cameo_news.py`](../scripts/fetch_gdelt_cameo_news.py) | Bulk DOC archive: [`scripts/fetch_gdelt_doc_archive.py`](../scripts/fetch_gdelt_doc_archive.py) -> [`scripts/build_gdelt_doc_index.py`](../scripts/build_gdelt_doc_index.py) -> [`scripts/query_gdelt_doc_index.py`](../scripts/query_gdelt_doc_index.py) |
+| Embeddings backend | SBERT (`all-MiniLM-L6-v2`) | OpenAI (`src/common/openai_embeddings.py`) is the v2.2 default; SBERT remains via `--embedder sbert` |
+| Per-benchmark retrieval routing | hard-coded in `compute_relevance.py` | [`src/common/retrieval_router.py`](../src/common/retrieval_router.py) dispatches DOC-index vs parent-pool per benchmark |
+| News pipeline (CC-News) | n/a | [`scripts/fetch_cc_news_archive.py`](../scripts/fetch_cc_news_archive.py) + [`scripts/build_cc_news_index.py`](../scripts/build_cc_news_index.py) + [`scripts/query_cc_news_index.py`](../scripts/query_cc_news_index.py); see [`docs/CC_NEWS_PIPELINE.md`](CC_NEWS_PIPELINE.md) |
+| ETD atomic-fact layer | facts produced by [`scripts/articles_to_facts.py`](../scripts/articles_to_facts.py) | facts.jsonl is shipped alongside articles.jsonl in the v2.2 deliverable; see [`docs/ETD_SPEC.md`](ETD_SPEC.md) |
+| Gold subset | n/a | [`benchmark/data/{cutoff}-gold/`](../benchmark/data/), built by [`scripts/build_gold_subset.py`](../scripts/build_gold_subset.py) |
+
+---
+
 ## 1. Overview
 
 The EMR-ACH benchmark pipeline produces a unified, leakage-guarded, self-contained
