@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-21T17:58:34",
+  "generated_at": "2026-04-23T10:56:25.897360Z",
   "model_cutoff": "2026-01-01",
   "cutoff_buffer_days": 0,
   "benchmarks_included": [
@@ -7,6 +7,25 @@
     "gdelt_cameo",
     "earnings"
   ],
-  "git_sha": "f1114c2d08f1d71d97aa10f65ed47b2b53384795",
-  "python": "C:\\Python314\\python.exe"
+  "n_fds": 6294,
+  "n_fds_by_benchmark": {
+    "forecastbench": 134,
+    "gdelt-cameo": 5975,
+    "earnings": 185
+  },
+  "n_articles": 28945,
+  "git_sha": "0df195734f9d26d6063c2f41415d5c63785a355b",
+  "quality_thresholds": {
+    "min_articles": 3,
+    "min_distinct_days": 2,
+    "min_chars": 1500,
+    "min_question_chars": 20
+  },
+  "deliverable_layout": {
+    "forecasts.jsonl": "primary data: one FD per line",
+    "articles.jsonl": "primary data: articles referenced by FDs",
+    "benchmark.yaml": "effective build config (reproducible)",
+    "build_manifest.json": "this file: provenance + counts",
+    "checksums.sha256": "SHA256 for the two primary deliverables"
+  }
 }

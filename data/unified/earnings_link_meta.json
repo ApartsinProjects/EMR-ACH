@@ -1,0 +1,25 @@
+{
+  "articles_input": "E:\\Projects\\ACH\\data\\earnings\\earnings_articles.jsonl",
+  "forecasts_input": "E:\\Projects\\ACH\\data\\unified\\forecasts.jsonl",
+  "top_k": 10,
+  "lookback_days": 90,
+  "n_earnings_fds": 535,
+  "n_filled": 483,
+  "n_zero": 52,
+  "n_missing_ticker_fds": 0,
+  "unique_tickers_in_articles": 457,
+  "article_count_histogram": {
+    "10": 61,
+    "9": 9,
+    "1": 214,
+    "2": 84,
+    "0": 52,
+    "4": 20,
+    "3": 25,
+    "5": 28,
+    "6": 16,
+    "8": 13,
+    "7": 13
+  },
+  "generated_at": "2026-04-23T10:55:39.943373Z"
+}

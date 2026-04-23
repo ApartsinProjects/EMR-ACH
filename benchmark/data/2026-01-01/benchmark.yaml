@@ -1,10 +1,11 @@
 # Benchmark build config used to generate the sibling files.
 # Reproduce with:
 #   python scripts/build_benchmark.py --config <path-to-this-file>
-# Generated: 2026-04-21T17:58:34  (git: f1114c2d08f1)
+# Generated: 2026-04-23T12:04:38  (git: unknown)
 
 model_cutoff: '2026-01-01'
 cutoff_buffer_days: 0
+default_forecast_horizon_days: 14
 benchmarks:
   forecastbench:
     enabled: true
@@ -13,13 +14,15 @@ benchmarks:
     - metaculus
     - manifold
     - infer
+    forecast_horizon_days: 14
   gdelt_cameo:
     enabled: true
+    forecast_horizon_days: 14
     context_start: '202601'
     context_end: '202602'
     test_month: '202603'
     all_end: '202603'
-    min_daily_mentions: 50
+    min_daily_mentions: 20
     max_download_workers: 16
   earnings:
     enabled: true
@@ -27,6 +30,7 @@ benchmarks:
     end: '2026-04-21'
     tickers: null
     threshold: 0.02
+    forecast_horizon_days: 14
 quality:
   min_articles: 3
   min_distinct_days: 2
@@ -34,7 +38,7 @@ quality:
   min_question_chars: 20
 relevance:
   embedding_model: sentence-transformers/all-mpnet-base-v2
-  batch_size: 32
+  batch_size: 256
   max_text_chars: 500
   sources:
     polymarket:
@@ -81,6 +85,11 @@ relevance:
       actor_match_required: false
 output:
   root: benchmark/data
+pipeline:
+  snapshot_hardlink_bytes: 20000000
+  text_fetch_workers: 24
+  gdelt_text_fetch_workers: 24
+  http_timeout_sec: 30
 secrets:
   openai_api_key: OPENAI_API_KEY
   newsapi_key: NEWSAPI_KEY
