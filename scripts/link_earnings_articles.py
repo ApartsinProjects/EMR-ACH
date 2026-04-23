@@ -174,15 +174,34 @@ def main() -> int:
         meta = fd.get("_earnings_meta") or {}
         ticker = (meta.get("ticker") or "").upper().strip()
         report_date = _parse_date(meta.get("report_date"))
+        # v2.2 leakage-guard anchor: forecast_point, not report_date. For v2.1
+        # FDs forecast_point == resolution_date so the boundary is identical;
+        # for v2.2 forecast_point = report_date - horizon_days (default 14),
+        # so the retrieval upper bound moves 2 weeks earlier.
+        forecast_point = _parse_date(fd.get("forecast_point")) or report_date
         if not ticker or report_date is None:
             missing_ticker_fds += 1
             out_records.append(fd)
             continue
 
-        start = report_date - timedelta(days=args.lookback_days)
+        start = forecast_point - timedelta(days=args.lookback_days)
         candidates = by_ticker.get(ticker, [])
-        matches = [a for a in candidates
-                   if start <= a["_parsed_date"] < report_date]
+        # Hard leakage constraint: article publish date must be <= forecast_point.
+        pre_leak = 0
+        matches = []
+        for a in candidates:
+            if a["_parsed_date"] is None:
+                continue
+            if a["_parsed_date"] > forecast_point:
+                pre_leak += 1
+                continue
+            if start <= a["_parsed_date"] <= forecast_point:
+                matches.append(a)
+        if pre_leak:
+            # Rare but possible: an earnings article in the pool dated AFTER
+            # the FD's forecast_point. Log so we can track source-side drift.
+            print(f"[link_earnings] {fd['id']} leakage-filtered {pre_leak} "
+                  f"articles with publish_date > {forecast_point.date()}")
         # Already sorted desc; take top_k
         picks = matches[: args.top_k]
         fd["article_ids"] = [a["_unified_id"] for a in picks]

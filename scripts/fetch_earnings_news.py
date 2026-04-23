@@ -631,6 +631,19 @@ def main():
                 url = art["url"]
                 if not url:
                     continue
+                # v2.2 leakage guard: drop anything with publish_date >
+                # forecast_point. Never trust the source-side time filter
+                # alone (Finnhub, yfinance, and GDELT DOC have all been
+                # observed to return future-dated records).
+                _pd = art.get("date", "") or ""
+                if _pd:
+                    try:
+                        _pd_dt = datetime.strptime(_pd[:10], "%Y-%m-%d")
+                        if _pd_dt > forecast_point_dt:
+                            per_prov_count["__dropped_leakage__"] += 1
+                            continue
+                    except ValueError:
+                        pass
                 if is_spam_url(url):
                     per_prov_count["__dropped_spam__"] += 1
                     continue
@@ -676,6 +689,9 @@ def main():
     print(f"\nDone. Wrote {written} new articles to {OUT_FILE.relative_to(ROOT)}")
     for prov, n in sorted(per_prov_count.items(), key=lambda x: -x[1]):
         print(f"  {prov:20s}: {n}")
+    _leak = per_prov_count.get("__dropped_leakage__", 0)
+    _total_seen = sum(per_prov_count.values())
+    print(f"[earnings] leakage-filtered: {_leak} of {_total_seen} articles")
     total = sum(1 for _ in OUT_FILE.open(encoding="utf-8")) if OUT_FILE.exists() else 0
     print(f"Total in file: {total} articles")
 

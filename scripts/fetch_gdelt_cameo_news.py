@@ -382,6 +382,19 @@ def main():
                 url = art["url"]
                 if not url:
                     continue
+                # v2.2 leakage guard: drop anything with publish_date >
+                # forecast_point. GDELT DOC + editorial sources have all
+                # been observed returning future-dated records occasionally,
+                # so the source-side filter is re-asserted here.
+                _pd = art.get("date", "") or ""
+                if _pd:
+                    try:
+                        _pd_dt = datetime.strptime(_pd[:10], "%Y-%m-%d")
+                        if _pd_dt > fp_dt:
+                            per_prov["__dropped_leakage__"] += 1
+                            continue
+                    except ValueError:
+                        pass
                 if is_spam_url(url):
                     per_prov["__dropped_spam__"] += 1; continue
                 norm = url_key(url)
@@ -412,6 +425,9 @@ def main():
     print(f"\nDone. Wrote {written} new articles to {OUT_FILE.relative_to(ROOT)}")
     for p, n in sorted(per_prov.items(), key=lambda x: -x[1]):
         print(f"  {p:20s}: {n}")
+    _leak = per_prov.get("__dropped_leakage__", 0)
+    _total_seen = sum(per_prov.values())
+    print(f"[gdelt_cameo] leakage-filtered: {_leak} of {_total_seen} articles")
 
 
 if __name__ == "__main__":
