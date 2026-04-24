@@ -50,6 +50,7 @@ import gzip
 import io
 import json
 import os
+import random
 import sys
 import time
 from dataclasses import dataclass, field
@@ -86,6 +87,7 @@ class ShardStats:
     records_seen: int = 0
     records_kept: int = 0
     records_malformed: int = 0
+    download_attempts: int = 1
     domains_kept: dict[str, int] = field(default_factory=dict)
     duration_s: float = 0.0
 
@@ -96,6 +98,7 @@ class ShardStats:
             "records_seen": self.records_seen,
             "records_kept": self.records_kept,
             "records_malformed": self.records_malformed,
+            "download_attempts": self.download_attempts,
             "domains_kept": self.domains_kept,
             "duration_s": round(self.duration_s, 2),
         }
@@ -274,18 +277,42 @@ def process_shard(shard_path: str, out_path: Path, whitelist: frozenset[str],
     raw_path = out_path.with_suffix(".warc.gz.dl")
 
     t0 = time.time()
-    # H8-1 ships a single-attempt download; H8-2 wraps this in a retry loop.
-    try:
-        stats.bytes_downloaded = _download_shard(url, raw_path, max_bytes,
-                                                 session=session)
-    except _TransientHTTPError as exc:
-        raise RuntimeError(f"shard {shard_path}: {exc}") from exc
+    last_err: Exception | None = None
+    downloaded = False
+    for attempt in range(1, RETRY_ATTEMPTS + 1):
+        try:
+            stats.bytes_downloaded = _download_shard(url, raw_path, max_bytes,
+                                                     session=session)
+            stats.download_attempts = attempt
+            downloaded = True
+            break
+        except _TransientHTTPError as exc:
+            last_err = exc
+            if attempt >= RETRY_ATTEMPTS:
+                break
+            sleep_s = random.uniform(*THROTTLE_SLEEP_RANGE)
+            print(f"[cc-news]   {shard_path}: {exc}, sleeping {sleep_s:.1f}s "
+                  f"(attempt {attempt}/{RETRY_ATTEMPTS})")
+            time.sleep(sleep_s)
+        except Exception as exc:
+            last_err = exc
+            if attempt >= RETRY_ATTEMPTS:
+                break
+            sleep_s = RETRY_BASE_SLEEP * (2 ** (attempt - 1))
+            print(f"[cc-news]   {shard_path}: {exc!r}, sleeping {sleep_s:.1f}s "
+                  f"(attempt {attempt}/{RETRY_ATTEMPTS})")
+            time.sleep(sleep_s)
+    if not downloaded:
+        raise RuntimeError(
+            f"shard {shard_path} failed after {RETRY_ATTEMPTS} retries: {last_err}"
+        ) from last_err
 
     # Now stream through warcio, filter, and write kept records to zstd.
     cctx = zstd.ZstdCompressor(level=10)
     with open(raw_path, "rb") as fin, open(tmp, "wb") as fout, cctx.stream_writer(fout) as zwriter:
         for record in iter_warc_records(fin):
             if record.get("_malformed"):
+                # H8-2: bad WARC entry; skip without aborting the shard.
                 stats.records_malformed += 1
                 continue
             stats.records_seen += 1
@@ -313,6 +340,8 @@ def process_shard(shard_path: str, out_path: Path, whitelist: frozenset[str],
                 dom = host.replace("www.", "")
                 stats.domains_kept[dom] = stats.domains_kept.get(dom, 0) + 1
             except Exception:
+                # H8-2: a single malformed record (e.g. truncated payload)
+                # must not kill the whole shard. Count and continue.
                 stats.records_malformed += 1
                 continue
 
@@ -381,6 +410,7 @@ def _process_shard(shard_url: str, shard_idx: int, month_dir: str,
         "wall_sec": round(stats.duration_s, 2),
         "status": "ok",
         "n_malformed": stats.records_malformed,
+        "download_attempts": stats.download_attempts,
     }
 
 
@@ -481,6 +511,8 @@ def main(argv: list[str] | None = None) -> int:
             if res["status"] == "ok":
                 n_succeeded += 1
                 total_kept += res["n_out"]
+                if res.get("download_attempts", 1) > 1:
+                    n_retried += 1
             else:
                 n_fatal += 1
                 print(f"[cc-news] shard {idx} FAILED after {RETRY_ATTEMPTS} retries: "
@@ -519,6 +551,8 @@ def main(argv: list[str] | None = None) -> int:
             if res["status"] == "ok":
                 n_succeeded += 1
                 total_kept += res["n_out"]
+                if res.get("download_attempts", 1) > 1:
+                    n_retried += 1
             else:
                 n_fatal += 1
                 print(f"[cc-news] shard {idx} FAILED after {RETRY_ATTEMPTS} retries: "
