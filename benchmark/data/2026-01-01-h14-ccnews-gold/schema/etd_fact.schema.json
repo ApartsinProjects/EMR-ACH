@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "emr-ach-gold/etd_fact.schema.json",
+  "title": "ETD Atomic Fact (gold subset)",
+  "description": "v2.1-gold ETD fact record. One atomic dated event extracted from one or more articles by an LLM (gpt-4o-mini, v3 prompt with anchor-table + verbatim-quote requirements). The `primary_article_id` links each fact to its source article; the article must be present in articles.jsonl for the gold subset to be self-contained.",
+  "type": "object",
+  "required": [
+    "id",
+    "fact",
+    "time",
+    "primary_article_id",
+    "polarity",
+    "extraction_confidence"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^f_[0-9a-f]{12}$"
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "time": {
+      "type": "string",
+      "description": "ISO date (YYYY-MM-DD), YYYY-MM, YYYY, or 'unknown'."
+    },
+    "time_end": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "time_precision": {
+      "type": "string",
+      "enum": [
+        "day",
+        "week",
+        "month",
+        "quarter",
+        "year",
+        "unknown"
+      ]
+    },
+    "time_type": {
+      "type": "string",
+      "enum": [
+        "point",
+        "interval",
+        "ongoing",
+        "periodic"
+      ]
+    },
+    "fact": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidence_quote": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Verbatim substring of the article body that grounds the fact (v3 prompt)."
+    },
+    "language": {
+      "type": "string"
+    },
+    "article_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "primary_article_id": {
+      "type": "string",
+      "pattern": "^art_[0-9a-f]{12}$"
+    },
+    "article_date": {
+      "type": "string"
+    },
+    "source": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "location": {
+      "type": [
+        "string",
+        "object",
+        "null"
+      ]
+    },
+    "metrics": {
+      "type": "array"
+    },
+    "kind": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "tags": {
+      "type": "array"
+    },
+    "polarity": {
+      "type": "string",
+      "enum": [
+        "asserted",
+        "negated",
+        "hypothetical",
+        "reported"
+      ]
+    },
+    "attribution": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "extraction_confidence": {
+      "type": "string",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    },
+    "canonical_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "variant_ids": {
+      "type": "array"
+    },
+    "linked_fd_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Stage-3 link: FD IDs whose article_ids include this fact's primary_article_id."
+    },
+    "extractor": {
+      "type": "string"
+    },
+    "extracted_at": {
+      "type": "string"
+    }
+  }
+}

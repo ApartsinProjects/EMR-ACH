@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "emr-ach-gold/article.schema.json",
+  "title": "Article (gold subset)",
+  "type": "object",
+  "required": [
+    "id",
+    "url",
+    "title",
+    "publish_date"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^art_[0-9a-f]{12}$"
+    },
+    "url": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "text": {
+      "type": "string"
+    },
+    "publish_date": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "source_domain": {
+      "type": "string"
+    },
+    "language": {
+      "type": "string"
+    },
+    "provenance": {
+      "type": [
+        "array",
+        "string"
+      ]
+    }
+  }
+}

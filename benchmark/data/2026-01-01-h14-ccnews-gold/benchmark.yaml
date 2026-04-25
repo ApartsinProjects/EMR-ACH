@@ -1,0 +1,28 @@
+# Gold subset of E:\Projects\ACH\benchmark\data\2026-01-01-h14-ccnews
+# See selection_criteria.md and build_manifest.json for the gold-specific filters.
+
+# v2.2 strategy 6.1B build (CC-News + v2.1 carryover, h14 leakage filter).
+# Built by scripts/build_h14_ccnews.py.
+# Generated: 2026-04-25T05:14:42+00:00
+
+model_cutoff: '2026-01-01'
+cutoff_buffer_days: 0
+default_forecast_horizon_days: 14
+default_lookback_days: 30
+benchmarks:
+  forecastbench:
+    enabled: true
+    forecast_horizon_days: 14
+    lookback_days: 30
+  earnings:
+    enabled: true
+    forecast_horizon_days: 14
+    lookback_days: 30
+  gdelt_cameo:
+    enabled: false   # deferred per PROJECT_SPEC §10.1
+source:
+  parent_cutoff: '2026-01-01'
+  parent_h14_cutoff: '2026-01-01-h14'
+  strategy: CC-News rebuild + v2.1 carryover (strategy B / 6.1B)
+  cc_news_index: 'data/cc_news/index_2025-12.sqlite'
+  top_k_per_fd: 30
