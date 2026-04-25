@@ -1,0 +1,56 @@
+{
+  "built_at": "2026-04-25T05:14:42+00:00",
+  "git_sha": "49a870f0919b4586eee8b672d523c03636ca6e70",
+  "script": "scripts/build_h14_ccnews.py",
+  "strategy": "CC-News rebuild + v2.1 carryover (PROJECT_SPEC \u00a76.1B)",
+  "parent_cutoff": "2026-01-01",
+  "parent_h14_cutoff": "2026-01-01-h14",
+  "output_cutoff": "2026-01-01-h14-ccnews",
+  "horizon_days": 14,
+  "lookback_days": 30,
+  "top_k_per_fd": 30,
+  "cc_news_index": "E:\\Projects\\ACH\\data\\cc_news\\index_2025-12.sqlite",
+  "cc_news_index_rows": 108861,
+  "benchmarks_in_scope": [
+    "earnings",
+    "forecastbench"
+  ],
+  "fd_in": {
+    "forecastbench": 40,
+    "earnings": 49
+  },
+  "fd_out": {
+    "forecastbench": 40,
+    "earnings": 49
+  },
+  "fd_total_in": 89,
+  "fd_total_out": 89,
+  "v21_pool_articles": 28945,
+  "articles_out": 1209,
+  "drop_reasons": {},
+  "dangling_article_ids_count": 0,
+  "leakage_violations": 0,
+  "horizon_violations": 0,
+  "top_source_domains": {
+    "timesofindia.indiatimes.com": 477,
+    "www.hindustantimes.com": 204,
+    "www.independent.co.uk": 156,
+    "www.straitstimes.com": 110,
+    "www.aljazeera.com": 65,
+    "www.latimes.com": 64,
+    "www.fool.com": 46,
+    "the guardian": 6,
+    "auto.hindustantimes.com": 5,
+    "ahaber.com.tr": 4,
+    "marketoracle.co.uk": 3,
+    "yahoo.com": 3,
+    "winnipegfreepress.com": 3,
+    "finance.yahoo.com": 3,
+    "rri.ro": 3,
+    "theguardian.com": 3,
+    "yardbarker.com": 2,
+    "torontosun.com": 2,
+    "fansided.com": 2,
+    "sbnation.com": 2
+  }
+}
