@@ -106,6 +106,125 @@ cost estimate ~$0.11 at gpt-4o-mini Batch API rates. Plan in
 compare; verify Batch API quota before firing (Batch quota is separate
 from sync quota).
 
+### 3.1.2 v2.2 6.1B build report (2026-04-25)
+
+Strategy 6.1B (CC-News rebuild path, §6.1B in §6.1) executed end-to-end
+on top of the 89-FD reuse-first h14 parent. CC-News fetch finished via
+the H8 parallel fetcher; the 2025-12 month is now in
+`data/cc_news/2025-12/` (616 zstd shards, gitignored).
+
+Commits:
+- `ae7d2c2` `v2.2 [B6.1B-1]: build CC-News SQLite index for 2025-12`
+- `49a870f` `v2.2 [B6.1B-2]: build_h14_ccnews.py = CC-News + v2.1 carryover unify`
+- `7d67886` `v2.2 [B6.1B-3]: publish 2026-01-01-h14-ccnews benchmark folder`
+- `a9798ea` `v2.2 [B6.1B-4]: ETD post-publish on h14-ccnews cutoff`
+- `6ca61f6` `v2.2 [B6.1B-5]: gold subset at benchmark/data/2026-01-01-h14-ccnews-gold/`
+- `6849faa` `v2.2 [B6.1B-6]: V2_2_EVAL_PLAN.md refresh for h14-ccnews gold`
+- this commit `v2.2 [B6.1B-7]: PROJECT_SPEC.md 6.1B report + tag candidacy`
+
+**CC-News SQLite index** (`data/cc_news/index_2025-12.sqlite`,
+gitignored; build log + host distribution at `docs/v2_2_ccnews_build.md`):
+- 108,861 unique articles across 616 shards (29s build).
+- 100% have `publish_date`; full coverage 2025-12-01 through 2025-12-31.
+- 10 distinct hosts (timesofindia, hindustantimes, independent,
+  straitstimes, aljazeera, latimes, fool, plus 3 sub-hosts) — narrow
+  allowlist from the upstream fetcher caps US-finance + niche topic
+  coverage.
+- Schema: `articles(url UNIQUE, host, publish_date, publish_ts, title,
+  text, shard, meta_date)` + FTS5 `articles_fts(title, text)` with
+  porter+unicode61 tokenizer; B-tree indices on `publish_date` and
+  `host`.
+
+**h14-ccnews pool** (`benchmark/data/2026-01-01-h14-ccnews/`,
+commit `7d67886`):
+- FD in (h14 parent): 89 (forecastbench=40 + earnings=49).
+- FD out: **89** (no drops; every FD got at least 1 article).
+- Articles out: **1,209** (up from 291 under reuse-first h14).
+- Per-FD CC-News articles: mean 12.7, median 0, max 30 (cap), bimodal —
+  FDs whose [fp - 30d, fp] window intersects 2025-12 saturate the cap;
+  FDs outside the window get zero CC-News and rely on carryover.
+- Per-FD v2.1 carryover: mean 2.1, median 1, max 10.
+- Top hosts in pool: timesofindia (477), hindustantimes (204),
+  independent (156), straitstimes (110), aljazeera (65), latimes (64),
+  fool.com (46).
+- Dangling article ids: **0**.
+- Leakage assertion: **0 violations** across 1,310 (fd, article) pairs.
+  Every article passes `publish_date <= forecast_point`.
+- Horizon assertion: **0 violations**. Every FD has
+  `(resolution_date - forecast_point).days == 14`.
+
+**ETD post-publish** (commit `a9798ea`):
+- Stage-1 delta extract: 1,135 new articles processed via gpt-4o-mini
+  Batch API + v3 prompt + `--strict-dates`. 859 produced facts, 124
+  errored (10.9% parse failure, in-band). 2,912 new facts emitted.
+  Cost ~$0.36, wall-clock 17m20s.
+- Stage-2 dedup: 84,454 facts → 64,876 canonicals (19,578 variants
+  pruned). FAISS-CPU + OpenAI text-embedding-3-small (batch resume +
+  5,824-row sync salvage; salvage cost ~$0.01).
+- Stage-3 link: 6,161 facts linked to ≥1 of the 89 h14-ccnews FDs
+  (7.3%). Histogram {0:78293, 1:5519, 2:628, 3:14}.
+- Production filter (high+ confidence, asserted polarity, no future,
+  require linked FD, source-blocklist): **5,956 production facts**
+  (up 19.5x from 306 under reuse-first h14).
+- Audit: 927 unique articles producing facts, 6.43 avg facts/article,
+  0 schema fails, 0 future-dated, 75.7% facts have ≥1 entity.
+  Top fact kinds: policy-statement (270), sports-event (167),
+  credit-card-offer (154), military-action (68).
+- Compare step skipped (`--skip-compare`) per the 2026-04-23 sync 429
+  quota issue; not blocking.
+
+**Gold subset** (`benchmark/data/2026-01-01-h14-ccnews-gold/`,
+commit `6ca61f6`):
+- Strict filters (`--min-articles 5 --min-distinct-days 3 --horizon-days
+  14 --min-avg-chars 500 --min-source-diversity 2 --keep-unknown`):
+  yielded 28 FDs.
+- Relaxed filters (`--min-articles 3 --min-distinct-days 2 --horizon-days
+  14 --min-avg-chars 300 --min-source-diversity 1 --keep-unknown`):
+  **36 FDs** (24 fb-stability + 1 fb-change + 6 earnings-stability +
+  5 earnings-change).
+- 705 articles (vs. 98 under h14-gold). 2,018 ETD facts (vs. 269 under
+  h14-gold) — 7.5x denser.
+- Top filter drops at relaxed: `earnings_not_sp100=17` (CC-News
+  finance-host coverage limited to fool.com), `min_articles(1<3)=16`
+  (FDs with only 1 article in the merged pool).
+- Yield is below the 100-300 task target and the 50-FD soft floor.
+  Root cause: narrow CC-News host allowlist (10 hosts, mostly
+  Indian/UK news). Fix is a broadened CC-News fetch (add bloomberg,
+  wsj, ft, marketwatch, reuters, etc., plus multi-month slices).
+
+**Baselines eval prep** (commit `6849faa`): all 10 baselines (B1-B9 +
+b3b_rag_claims) dry-run clean against h14-ccnews-gold; 881 total
+requests (up from 472 under h14-gold); cost estimate ~$0.30 at
+gpt-4o-mini Batch API rates.
+
+**Cumulative cost this build run**: ~$0.37 OpenAI Batch API
+(ETD extract $0.36 + dedup salvage $0.01) of the $10 cap. Baselines
+not yet fired.
+
+**Tag candidacy decision points**:
+1. h14-ccnews has wider article + ETD coverage than h14 reuse-first
+   (1209 vs. 291 articles; 5956 vs. 403 production facts).
+2. Gold yield (36) is below the paper-quality floor (50). Two options:
+   (a) tag `v2.2-data-ready` now using h14-ccnews-gold for 36 FDs +
+   document the yield gap as a known limitation; (b) hold tagging,
+   broaden the CC-News fetch (more hosts + months), rebuild, then tag.
+3. Recommend (b): the ~24h cost of fetching bloomberg/wsj/ft/etc. + a
+   second-month slice (2025-11) is small relative to the paper's value
+   from a 100+ FD gold, and the existing build_h14_ccnews.py + ETD
+   pipeline replays cleanly on a richer index.
+
+**Next session — ready to fire**:
+1. Pre-flight sync smoke against h14-ccnews-gold (see
+   `docs/V2_2_EVAL_PLAN.md`).
+2. Full B1-B9 + b3b Batch API submission against h14-ccnews-gold
+   (~$0.30).
+3. If recommendation (b) above is accepted: extend
+   `scripts/fetch_cc_news_archive.py` host allowlist + fetch 2025-11
+   shard month + re-run B6.1B-1 through B6.1B-7 with the broadened
+   index.
+4. Regenerate paper Table 1 + Table 4 cells for the v2.2-h14-ccnews
+   row, then tag `v2.2-data-ready` (or hold per (b)).
+
 ### 3.2 Known bugs filed in `docs/V2_2_REFACTOR_BACKLOG.md`
 - **H1** GDELT-CAMEO `publish_date = event_date`. **FIXED in code** (URL-slug parser fallback to event date); v2.1 publish retrofitted (1,130 of 27,805 articles corrected; most gdelt URLs don't expose a date slug).
 - **H2** 1,049 of 1,299 earnings article_ids dangle in the published pool (unify-vs-link race). **DIAGNOSTIC SHIPPED** (step_publish now dumps a `dangling_article_ids.txt`); **HARD FIX DEFERRED** to v2.2 via reuse-check cache invalidation.
