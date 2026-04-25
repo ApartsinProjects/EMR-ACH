@@ -260,13 +260,21 @@ def _download_shard(url: str, raw_path: Path, max_bytes: int,
 def process_shard(shard_path: str, out_path: Path, whitelist: frozenset[str],
                   date_lo: datetime, date_hi: datetime,
                   max_bytes: int = DEFAULT_MAX_SHARD_BYTES,
-                  session=None) -> ShardStats:
+                  session=None, cache_pre_filter: bool = False) -> ShardStats:
     """Stream a WARC shard over HTTPS and write kept records to zstd-JSONL.
 
     Returns a ``ShardStats`` summary. Writes atomically (``.tmp`` then
     rename). Wraps the network + WARC loop in a 3-attempt retry with
     exponential backoff (H8-2). Raises ``RuntimeError`` if the shard
     exceeds ``max_bytes`` or all retries are exhausted.
+
+    When ``cache_pre_filter=True``, every successfully extracted record
+    is also written to ``shard_NNN.raw.jsonl.zst`` BEFORE the whitelist
+    filter is applied. A future allowlist widening can then be served
+    by ``scripts/refilter_cc_news.py`` reading the .raw cache, with no
+    WARC re-download and no trafilatura re-run. Disk cost is roughly
+    10-50x the filtered output (since the whitelist drops 99%+ of
+    records); pay it once to make every future re-filter free.
     """
     import zstandard as zstd  # type: ignore
 
@@ -318,8 +326,11 @@ def process_shard(shard_path: str, out_path: Path, whitelist: frozenset[str],
             stats.records_seen += 1
             try:
                 host = _extract_host(record["url"])
-                if not host_in_whitelist(host, whitelist):
-                    continue
+                # Sentinel "__no_whitelist__" means accept every host
+                # (--no-whitelist mode); skip the membership check.
+                if "__no_whitelist__" not in whitelist:
+                    if not host_in_whitelist(host, whitelist):
+                        continue
                 dt = _parse_date_header(record["http_date"])
                 if dt is None or dt < date_lo or dt > date_hi:
                     continue
@@ -438,6 +449,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Parallel worker processes (default: min(8, cpu-1)). Use 1 for legacy single-process path.")
     p.add_argument("--force", action="store_true", help="Re-process shards even if .done exists")
     p.add_argument("--dry-run", action="store_true", help="List shards without downloading")
+    p.add_argument("--no-whitelist", action="store_true",
+                   help="Bypass the editorial domain whitelist; keep every record. "
+                        "Disk + CPU cost balloons (every record gets trafilatura-extracted, "
+                        "not just the 1%% that match the curated list). Use only when you "
+                        "intend to re-filter downstream by another criterion.")
     return p
 
 
@@ -473,7 +489,13 @@ def _enumerate_jobs(months: list[tuple[int, int]], out_root: Path,
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    wl = load_whitelist(Path(args.domain_whitelist) if args.domain_whitelist else None)
+    if args.no_whitelist:
+        # Sentinel value the worker recognises to skip the host-in-whitelist
+        # check entirely. Implemented as a single-element frozenset with a
+        # well-known marker so callers + workers cannot accidentally collide.
+        wl = frozenset({"__no_whitelist__"})
+    else:
+        wl = load_whitelist(Path(args.domain_whitelist) if args.domain_whitelist else None)
     out_root = Path(args.out)
     out_root.mkdir(parents=True, exist_ok=True)
 
@@ -482,9 +504,10 @@ def main(argv: list[str] | None = None) -> int:
     ey, em = months[-1]
     date_hi = _parse_iso(args.date_hi) if args.date_hi else _month_end(ey, em)
 
+    wl_label = "ALL (no_whitelist)" if args.no_whitelist else f"size={len(wl)}"
     print(f"[cc-news] window={args.start}..{args.end}, "
           f"date_lo={date_lo.isoformat()}, date_hi={date_hi.isoformat()}, "
-          f"whitelist_size={len(wl)}, workers={args.workers}")
+          f"whitelist={wl_label}, workers={args.workers}")
 
     jobs = _enumerate_jobs(months, out_root, args.max_shards, args.force, args.dry_run)
     if args.dry_run:
