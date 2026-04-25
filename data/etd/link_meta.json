@@ -1,17 +1,18 @@
 {
   "facts_input": "E:\\Projects\\ACH\\data\\etd\\facts.v1_canonical.jsonl",
-  "fds_input": "E:\\Projects\\ACH\\benchmark\\data\\2026-01-01-h14\\forecasts.jsonl",
+  "fds_input": "E:\\Projects\\ACH\\benchmark\\data\\2026-01-01-h14-ccnews\\forecasts.jsonl",
   "output": "E:\\Projects\\ACH\\data\\etd\\facts.v1_linked.jsonl",
-  "cutoff": "2026-01-01-h14",
-  "n_facts": 78630,
+  "cutoff": "2026-01-01-h14-ccnews",
+  "n_facts": 84454,
   "n_fds": 89,
-  "n_articles_in_fds": 291,
-  "n_facts_linked": 445,
+  "n_articles_in_fds": 1209,
+  "n_facts_linked": 6161,
   "secondary_articles": false,
   "link_size_histogram": {
-    "0": 78185,
-    "1": 435,
-    "2": 10
+    "0": 78293,
+    "1": 5519,
+    "2": 628,
+    "3": 14
   },
-  "generated_at": "2026-04-23T19:57:17.145741Z"
+  "generated_at": "2026-04-25T05:38:14.397940Z"
 }

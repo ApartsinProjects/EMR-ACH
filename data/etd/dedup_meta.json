@@ -1,10 +1,10 @@
 {
   "input": "E:\\Projects\\ACH\\data\\etd\\facts.v1.jsonl",
   "output": "E:\\Projects\\ACH\\data\\etd\\facts.v1_canonical.jsonl",
-  "n_facts": 78630,
-  "n_clusters": 62074,
-  "n_deduped": 16556,
-  "n_unique_canonicals": 62074,
+  "n_facts": 84454,
+  "n_clusters": 64876,
+  "n_deduped": 19578,
+  "n_unique_canonicals": 64876,
   "threshold": 0.92,
   "window_days": 3,
   "top_k": 10,
@@ -12,18 +12,18 @@
   "embed_model": "text-embedding-3-small",
   "knn_mode": "bucket",
   "cluster_size_histogram": {
-    "1": 54908,
-    "2": 4372,
+    "1": 55027,
+    "2": 6904,
     "3": 1215,
-    "4": 566,
+    "4": 706,
     "5": 315,
-    "6": 181,
-    "7": 137,
-    "8": 85,
+    "6": 187,
+    "7": 138,
+    "8": 87,
     "9": 60,
-    "10": 32,
+    "10": 33,
     "11": 44,
-    "12": 16,
+    "12": 17,
     "13": 22,
     "14": 18,
     "15": 18,
@@ -53,5 +53,5 @@
     "154": 1,
     "223": 1
   },
-  "generated_at": "2026-04-23T19:57:14.309815Z"
+  "generated_at": "2026-04-25T05:38:10.923278Z"
 }
