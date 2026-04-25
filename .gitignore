@@ -29,6 +29,11 @@ data/*.zip
 data/*.sqlite
 data/*.db
 
+# CC-News fetched archive (regeneratable via scripts/fetch_cc_news_archive.py;
+# 100s of zstd shards per month, 1-3 GB each). Build log + per-month manifests
+# may be committed explicitly under docs/.
+data/cc_news/
+
 # ForecastBench-adjacent large blobs (re-fetchable)
 data/gdelt_articles.jsonl
 data/gdelt_articles_supplement.jsonl
