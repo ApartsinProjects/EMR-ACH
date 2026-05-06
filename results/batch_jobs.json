@@ -83,5 +83,10 @@
     "batch_id": "batch_69e8f9aa5a2481908634a7e40cc101dd",
     "job_name": "etd_etd_v2_chunked__chunk_004_of_005",
     "status": "completed"
+  },
+  "etd_delta_20260101h14ccnews": {
+    "batch_id": "batch_69ec4e8c98c8819089c5e128124766dd",
+    "job_name": "etd_delta_20260101h14ccnews",
+    "status": "completed"
   }
 }
