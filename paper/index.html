@@ -575,10 +575,19 @@ $$
   <tr class="hl"><td><strong>+ Multi-Agent (Full System)</strong></td><td>TBD</td><td>TBD</td><td>TBD</td><td>TBD</td><td>TBD</td><td>TBD</td></tr>
 </table>
 
+<figure>
+  <img src="figures/fig2_main_results.png" alt="EMR-ACH main results across the three benchmarks">
+  <figcaption><strong>Figure 2.</strong> Main-results overview across the three benchmarks. EMR-ACH variants (shaded) are stacked on top of the baseline battery; the full system (contrastive indicators + diagnostic weighting + multi-agent) is the bold rightmost cluster per benchmark. Concrete numbers refresh from Table 5 on each Phase-3 run.</figcaption>
+</figure>
+
 <h3>6.2 Per-Class Breakdown (GDELT-CAMEO)</h3>
 <p>
-  A pending per-class-recall figure reports recall for Peace / Tension / Violence under three representative system configurations: best baseline, EMR-ACH base, and full system. This isolates which classes benefit most from diagnosticity weighting vs. multi-agent debate.
+  Figure 3 reports recall for Peace / Tension / Violence under three representative system configurations: best baseline, EMR-ACH base, and full system. This isolates which classes benefit most from diagnosticity weighting vs. multi-agent debate.
 </p>
+<figure>
+  <img src="figures/fig7_rank_dist.png" alt="Per-class recall by configuration">
+  <figcaption><strong>Figure 3.</strong> Per-class recall on GDELT-CAMEO. The full EMR-ACH system tightens the Peace / Tension / Violence imbalance relative to unstructured baselines; numbers reload from the same eval batch that fills Table 5.</figcaption>
+</figure>
 
 <h3>6.2.1 Hybrid-vs-articles-only ablation</h3>
 <p>
@@ -616,6 +625,10 @@ $$
 </p>
 
 <h3>6.3 Confusion Matrices</h3>
+<figure>
+  <img src="figures/fig6_kl_divergence.png" alt="Confusion-matrix overview">
+  <figcaption><strong>Figure 4.</strong> Row-normalized confusion-matrix tile overview across benchmark × system pairs. Off-diagonal mass concentration shifts toward the diagonal as structured components are added; full numerical matrices populate from the Phase-3 batch.</figcaption>
+</figure>
 <p>
   For each benchmark × system pair, we report a row-normalized confusion matrix $C[y, \hat{h}]$ to expose systematic misselections. As a motivating <em>pre-v2.1 pilot measurement</em> on the legacy multiclass ForecastBench framing (raw Yes/No targets, before the Comply/Surprise unification described in §3.2), the B1 and B2 baselines degenerated into a near-constant "No" predictor (recall "No" $\approx 0.96$; recall "Yes" $\approx 0.17$), failing to beat majority-class accuracy and exhibiting the same status-quo collapse failure mode that motivates the Comply/Surprise change-subset stratification. The Phase-3 confusion matrices below are reported on the v2.1 binary primary target and are not directly comparable to these pilot numbers.
 </p>
@@ -634,10 +647,19 @@ $$
   <tr><td>w/o Temporal decay</td><td>TBD</td><td>TBD</td><td>TBD</td></tr>
 </table>
 
+<figure>
+  <img src="figures/fig4_ablation.png" alt="Component ablation">
+  <figcaption><strong>Figure 5.</strong> Component-ablation deltas. Each bar removes one EMR-ACH component from the full system; height = absolute accuracy drop relative to the full configuration in Table 7.</figcaption>
+</figure>
+
 <h3>6.5 Multi-Agent Scaling</h3>
 <p>
-  Figure (pending) reports accuracy and API cost as the agent count varies in $\{1, 2, 3, 4, 5, 6\}$. We expect a plateau around 3–4 advocates, matching the pre-existing scaling finding.
+  Figure 6 reports accuracy and API cost as the agent count varies in $\{1, 2, 3, 4, 5, 6\}$. We expect a plateau around 3 to 4 advocates, matching the pre-existing scaling finding.
 </p>
+<figure>
+  <img src="figures/fig5_multiagent.png" alt="Multi-agent scaling">
+  <figcaption><strong>Figure 6.</strong> Multi-agent debate scaling. Accuracy plateaus near three advocates per hypothesis; API cost grows linearly with agent count, defining a clear cost-quality knee.</figcaption>
+</figure>
 
 
 <h2>7. Analysis and Discussion</h2>

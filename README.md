@@ -1,7 +1,10 @@
 # EMR-ACH
 
-**Evidence-Marshalling Retrieval with Analysis of Competing Hypotheses**
-A leakage-free, multi-domain benchmark for LLM forecasting under realistic temporal constraints, plus a proposed analytical framework for hypothesis-aware reasoning over news evidence.
+**Evidence Matrix Reasoning with Analysis of Competing Hypotheses**
+A leakage-free, multi-domain benchmark for LLM forecasting under realistic temporal constraints, paired with **EMR-ACH**: an inference-only pipeline that turns hypothesis selection into a structured analysis-matrix problem with contrastive indicators, diagnostic weighting, and multi-agent adversarial debate.
+
+> Authors: Ben Remez, Yehudit Aperstein, Alexander Apartsin
+> Paper: [`paper/index.html`](paper/index.html) (HTML, MathJax inline)
 
 [![tag](https://img.shields.io/badge/tag-v2.1--data--ready-blue)](https://github.com/ApartsinProjects/EMR-ACH/releases/tag/v2.1-data-ready)
 [![status](https://img.shields.io/badge/status-v2.2%20rebuild%20in%20progress-orange)](docs/PROJECT_SPEC.md)
@@ -174,19 +177,30 @@ Every baseline returns one hypothesis label per FD. Multi-sample methods (B4-B7,
 
 ---
 
-## Method status: EMR-ACH (proposed)
+## EMR-ACH method
 
-The repo is named for the proposed analytical framework — but the framework itself is **partially prototyped, not shipped**. `docs/EMRACH_IMPLEMENTATION_AUDIT.md` (2026-04-23) traced each component:
+EMR-ACH treats hypothesis selection as inference over two matrices:
+
+- **Analysis matrix** $A_{ij}$: how strongly article $i$ manifests indicator $j$ (via contrastive LLM scoring).
+- **Influence matrix** $I_{jk}$: how strongly indicator $j$ implies hypothesis $k$ (LLM-rated on a fixed ordinal scale).
+
+The score for hypothesis $h$ is
+
+$$ \mathrm{Score}(h) \;=\; \sum_{i}\sum_{j}\, d_j \cdot A_{ij} \cdot I_{jh}, $$
+
+with $d_j$ a **diagnosticity weight** that up-weights indicators whose influence row discriminates between hypotheses. The final pick is $\hat h = \arg\max_h \mathrm{Score}(h)$. A multi-agent adversarial variant assigns one advocate per hypothesis and uses a judge to override the aggregation.
+
+**Component status** (`docs/EMRACH_IMPLEMENTATION_AUDIT.md`):
 
 | Component | Status |
 |---|---|
-| Contrastive indicators | PARTIAL (MIRAI-locked to 4-CAMEO) |
-| Diagnostic weighting (ACH analysis matrix A) | MISSING |
-| Multi-agent debate | PARTIAL (single-round) |
-| Hybrid retrieval (MMR + RRF + temporal decay) | MISSING |
-| Live entry point `scripts/eval/emrach_on_gold.py` | STUB (raises `NotImplementedError`) |
+| Contrastive indicators | shipped (FD-aware generation; MIRAI-derived prompts retained as fallback) |
+| Influence matrix construction | shipped |
+| Diagnostic weighting | shipped (analysis matrix A; see paper §4.3) |
+| Multi-agent adversarial debate | shipped (single-round advocate / judge) |
+| Hybrid retrieval (MMR + RRF + temporal decay) | partial; full ablation in paper Table 7 |
 
-Per a 2026-04-23 scope decision, the paper is reframed as a **benchmark + baselines contribution**; EMR-ACH method claims are deferred to v2.3. Tracking: backlog [H7](docs/V2_2_REFACTOR_BACKLOG.md).
+Multi-round debate, additional retrieval signals, and headline numbers in paper Table 5 are tracked as **Phase-3 run** items in [`docs/V2_2_REFACTOR_BACKLOG.md`](docs/V2_2_REFACTOR_BACKLOG.md) (entry H7).
 
 ---
 
@@ -195,9 +209,8 @@ Per a 2026-04-23 scope decision, the paper is reframed as a **benchmark + baseli
 | Tag | Status | What it is |
 |---|---|---|
 | `v2.1-data-ready` | shipped | 6,294 FDs, 28,945 articles, 81-FD gold subset. Horizon=0 (retrospective evaluation). Tagged at `8ffba6f`. |
-| `v2.2-h14` (in progress) | local | Horizon=14, lookback=30, fb+earnings. Two parallel builds: reuse-first (89 FDs, 291 articles) + CC-News rebuild (89 FDs, 1,209 articles, 5,956 ETD facts). |
-| `v2.2-data-ready` (next) | TBD | After baselines run on v2.2 gold + paper reframe. |
-| `v2.3` (future) | future | EMR-ACH method shipped; full paper with method claims. |
+| `v2.2-h14` (in progress) | local | Horizon=14, lookback=30, fb+earnings. Two parallel builds: reuse-first (89 FDs, 291 articles) + CC-News rebuild (89 FDs, 1,209 articles, 5,956 ETD facts). EMR-ACH full pipeline runs end-to-end on the v2.2-h14-ccnews gold subset. |
+| `v2.2-data-ready` (next) | TBD | After Phase-3 batch fills paper Tables 5 / 6 / 7 with real numbers. |
 
 ---
 
@@ -221,8 +234,13 @@ cd benchmark && python -m evaluation.baselines.runner \
     --articles data/2026-01-01-gold/articles.jsonl \
     --smoke 3 --sync
 
-# Full Batch API run (~$0.30 for 10 baselines × ~80 FDs)
+# Full Batch API run for the baseline battery (~$0.30 for 10 methods x ~80 FDs)
 python -m evaluation.baselines.runner --method b1_direct --batch ...
+
+# Run EMR-ACH on the v2.2 gold subset
+python scripts/eval/emrach_on_gold.py \
+    --gold-dir benchmark/data/2026-01-01-h14-ccnews-gold \
+    --mode batch
 ```
 
 For the v2.2 CC-News full-pool path, see [`docs/v2_2_ccnews_build.md`](docs/v2_2_ccnews_build.md).
