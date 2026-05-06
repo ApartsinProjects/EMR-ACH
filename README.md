@@ -1,108 +1,78 @@
-# EMR-ACH
+<p align="center">
+  <img src="paper/figures/hero_emr_ach.png" alt="Evidence Matrix Reasoning: an article is decomposed across an evidence matrix and resolves to one of three competing hypotheses" width="100%">
+</p>
 
-**Evidence Matrix Reasoning with Analysis of Competing Hypotheses**
-A leakage-free, multi-domain benchmark for LLM forecasting under realistic temporal constraints, paired with **EMR-ACH**: an inference-only pipeline that turns hypothesis selection into a structured analysis-matrix problem with contrastive indicators, diagnostic weighting, and multi-agent adversarial debate.
+# Evidence Matrix Reasoning: Structured Hypothesis Selection via Analysis of Competing Hypotheses
 
-> Authors: Ben Remez, Yehudit Aperstein, Alexander Apartsin
-> Paper: [`paper/index.html`](paper/index.html) (HTML, MathJax inline)
+**EMR-ACH** turns LLM forecasting into a structured analysis-matrix problem. Instead of asking a model to pick a hypothesis from a question and a bag of articles in a single forward pass, we decompose the task into three small, auditable steps that mirror Heuer's *Analysis of Competing Hypotheses* method from the intelligence community.
 
-[![tag](https://img.shields.io/badge/tag-v2.1--data--ready-blue)](https://github.com/ApartsinProjects/EMR-ACH/releases/tag/v2.1-data-ready)
-[![status](https://img.shields.io/badge/status-v2.2%20rebuild%20in%20progress-orange)](docs/PROJECT_SPEC.md)
-[![license](https://img.shields.io/badge/code-MIT-green)](LICENSE)
-
----
-
-## Why this exists
-
-Most LLM forecasting evaluations leak. Either the question's resolution date sits inside the model's training window, or the "evidence" articles are pulled retroactively from the day the answer was already public. Either way, the model is grading itself with the answer key.
-
-EMR-ACH closes that gap by enforcing two invariants per **Forecast Dossier (FD)**:
-
-1. **Horizon ≥ 14 days** — the simulated forecaster sees the question 14 days before resolution, not on the day of.
-2. **Strict leakage filter** — every retrieved article has `publish_date ≤ forecast_point`. Verified at publish time and again at evaluation.
-
-The resulting benchmark covers three forecasting domains under one schema, three evaluation tracks, and ten reproducible baselines on a shared pick-only response contract.
+> **Authors.** Ben Remez, Yehudit Aperstein, Alexander Apartsin
+> **Paper.** [`paper/index.html`](paper/index.html)
+> **Tag.** `v2.1-data-ready`
 
 ---
 
-## What's in the box
+## The method
 
-```
-benchmark/data/{cutoff}/                 ← published benchmark
-benchmark/data/{cutoff}-gold/            ← curated, self-contained gold subset
-benchmark/data/{cutoff}-h14/             ← v2.2 horizon-14 reuse-first build
-benchmark/data/{cutoff}-h14-ccnews/      ← v2.2 horizon-14 CC-News rebuild
-benchmark/evaluation/baselines/          ← B1..B9 + majority-class reference
-docs/PROJECT_SPEC.md                     ← single-source-of-truth spec
-docs/V2_2_REFACTOR_BACKLOG.md            ← living backlog (80 items)
-docs/V2_2_EVAL_PLAN.md                   ← ready-to-fire Batch API commands
-paper/index.html                         ← HTML paper (Tables, Appendices A-G)
-src/common/openai_embeddings.py          ← Batch API helper (auto-chunk, salvage, local-completed)
-src/pipeline/                            ← (proposed) EMR-ACH method modules — see §method status
-scripts/                                 ← every pipeline stage as a CLI
-```
+Given a Forecast Dossier (FD) — a question, a fixed hypothesis set $\mathcal{H} = \{h_1, \dots, h_K\}$, and a bundle of pre-event articles $\mathcal{A}$ — EMR-ACH builds two matrices:
 
----
+| Matrix | Shape | Cell meaning |
+|---|---|---|
+| **Analysis matrix** $A$ | $\mathcal{A} \times \text{indicators}$ | Does article $i$ manifest indicator $j$? |
+| **Influence matrix** $I$ | $\text{indicators} \times \mathcal{H}$ | How strongly does indicator $j$ imply hypothesis $k$? |
 
-## Three tracks, one schema
+The score for hypothesis $h$ is
 
-Every Forecast Dossier (FD) carries the same fields regardless of source:
+$$ \mathrm{Score}(h) \;=\; \sum_{i}\sum_{j}\, d_j \cdot A_{ij} \cdot I_{jh} $$
 
-| Track | n FDs (v2.1) | Domain | Primary target | Secondary |
-|---|---:|---|---|---|
-| `forecastbench` | 134 | Public-interest forecasting markets | Comply / Surprise | resolved label |
-| `gdelt-cameo` | 5,975 | Geopolitical event intensity | Comply / Surprise | Peace / Tension / Violence |
-| `earnings` | 185 | S&P 500 earnings | Comply / Surprise | Beat / Meet / Miss |
+with **diagnosticity weight** $d_j$ amplifying indicators whose influence row discriminates between hypotheses (those with high variance in $I_{j\cdot}$). The final pick is
 
-The **Comply/Surprise** primary target unifies the three tracks: did the prior expectation hold, or did something break? `fd_type ∈ {stability, change, unknown}` stratifies further.
+$$ \hat{h} \;=\; \arg\max_{h \in \mathcal{H}} \mathrm{Score}(h). $$
+
+A multi-agent adversarial variant adds one advocate agent per hypothesis and lets a judge agent override the aggregation. No probability distribution, no calibration: every system in the comparison emits a single label per FD.
+
+Pipeline: see Figure 1 in the [paper](paper/index.html).
 
 ---
 
-## The pipeline
+## Why structured matters
 
-```
-       (1) ingest                 (2) unify                  (3) match
-  ┌──────────────────┐      ┌──────────────────┐      ┌──────────────────┐
-  │ forecastbench    │ ───▶ │  unify_articles  │ ───▶ │ compute_relevance│
-  │ gdelt-cameo      │      │  unify_forecasts │      │  (OpenAI embed)  │
-  │ earnings         │      │                  │      │                  │
-  │ CC-News (v2.2)   │      └──────────────────┘      └──────────────────┘
-  └──────────────────┘                                          │
-                                                                ▼
-                                                       ┌──────────────────┐
-                                                       │  link_earnings   │ (ticker-date join)
-                                                       │  relink_gdelt    │ (pre-event substitution)
-                                                       │  prior_state     │ (status-quo annotation)
-                                                       └──────────────────┘
-                                                                │
-       (5) ETD                   (4) publish                    │
-  ┌──────────────────┐      ┌──────────────────┐                │
-  │ articles_to_facts│ ◀─── │  step_publish    │ ◀──────────────┘
-  │ etd_dedup (G8)   │      │  + leakage check │
-  │ etd_link         │      │  + dangling-id   │
-  │ etd_filter       │      │    integrity     │
-  │ etd_audit        │      └──────────────────┘
-  └──────────────────┘                │
-           │                          ▼
-           ▼                ┌──────────────────┐
-  ┌──────────────────┐ ◀─── │  build_gold_     │
-  │  gold subset     │      │    subset        │
-  └──────────────────┘      └──────────────────┘
-                                     │
-                                     ▼
-                            ┌──────────────────┐
-                            │ baselines runner │ ──▶ paper Tables
-                            │  B1..B9 + maj    │
-                            └──────────────────┘
-```
+LLMs collapse "enumerate hypotheses + score evidence + commit" into one forward pass. Even trained human analysts struggle with this; ACH was designed exactly to split it into small, auditable sub-decisions. EMR-ACH applies the same decomposition to LLMs:
 
-Every stage is a self-contained CLI under `scripts/`. The orchestrator at `scripts/build_benchmark.py` runs the full chain.
+- **Indicator generation is contrastive.** Each indicator is forced to differentiate at least two hypotheses; vague "applies-to-everything" indicators get filtered out.
+- **Scoring is local and concrete.** "Does this article mention military exercises along the border?" is reliably answerable; "what will happen?" is not.
+- **Diagnostic weighting is automatic.** Indicators that don't separate hypotheses get $d_j \approx 0$ and contribute no noise to the argmax.
+- **Multi-agent debate is targeted.** One advocate per hypothesis, one judge — not free-form back-and-forth.
+
+The full ablation in [paper/index.html §6.4](paper/index.html) isolates each contribution.
 
 ---
 
-## Forecast Dossier (FD)
+## The benchmark (used to evaluate the method)
 
-A Forecast Dossier is one resolved forecasting question paired with its pre-event evidence bundle:
+We need a benchmark that measures forecasting capability without leaking the answer. Two structural contaminations had to go:
+
+1. **Resolution leakage** — questions whose resolution date sits inside the model's training cutoff.
+2. **Article-pool leakage** — retrieved articles published *after* the simulated forecasting decision.
+
+The EMR-ACH benchmark is built around three FD tracks under one schema, with leakage handled by construction:
+
+| Track | n FDs (v2.1) | Domain | Primary target |
+|---|---:|---|---|
+| `forecastbench` | 134 | Public-interest forecasting markets | Comply / Surprise |
+| `gdelt-cameo` | 5,975 | Geopolitical event intensity | Comply / Surprise (also Peace / Tension / Violence) |
+| `earnings` | 185 | S&P 500 earnings | Comply / Surprise (also Beat / Meet / Miss) |
+
+Both invariants below are verified at publish time and re-asserted at evaluation:
+
+$$ t_r - t_f = h \quad (h = 14\text{ days in v2.2}) $$
+$$ \forall a \in \texttt{article\_ids}: \quad \texttt{publish\_date}(a) \le t_f $$
+
+The benchmark exists to compare EMR-ACH against a battery of nine reproducible baselines (B1-B9) on a shared pick-only response contract — full details in [`benchmark/evaluation/BASELINES.md`](benchmark/evaluation/BASELINES.md). A curated **gold subset** under each cutoff ships fully self-contained: schema, validators, example loaders, LICENSE, CITATION inline.
+
+---
+
+## Forecast Dossier
 
 ```jsonc
 {
@@ -110,18 +80,13 @@ A Forecast Dossier is one resolved forecasting question paired with its pre-even
   "benchmark": "earnings",
   "question": "Will Apple's Q1 FY26 EPS surprise be Beat / Meet / Miss?",
   "hypothesis_set": ["Comply", "Surprise"],
-  "hypothesis_definitions": {"Comply": "...", "Surprise": "..."},
   "ground_truth": "Comply",
-  "ground_truth_idx": 0,
-  "forecast_point": "2026-01-16T00:00:00Z",       // resolution_date − 14d
-  "resolution_date": "2026-01-30T20:30:00Z",
-  "lookback_days": 30,                             // article window: [fp-30d, fp]
-  "default_horizon_days": 14,
-  "article_ids": ["art_a995…", "art_e394…", ...], // every article passes publish_date ≤ fp
-  "prior_state_30d": "guidance reaffirmed; analyst consensus 2.10 EPS",
-  "prior_state_stability": "stable",
+  "forecast_point":   "2026-01-16T00:00:00Z",   // resolution_date − 14d
+  "resolution_date":  "2026-01-30T20:30:00Z",
+  "article_ids": ["art_a995…", "art_e394…", ...],  // every one passes leakage
+  "prior_state_30d": "guidance reaffirmed; consensus 2.10 EPS",
   "fd_type": "stability",
-  "metadata": {"ticker": "AAPL", "report_date": "2026-01-30", ...}
+  "metadata": {"ticker": "AAPL", "x_multiclass_gt": "Meet", ...}
 }
 ```
 
@@ -131,93 +96,41 @@ Full schema: [`docs/FORECAST_DOSSIER.md`](docs/FORECAST_DOSSIER.md).
 
 ## Event Timeline Dossier (ETD)
 
-ETD is the evidence side: articles get distilled into atomic, dated facts that can be deduplicated, linked, and reasoned over independently of the article they came from.
+EMR-ACH's evidence layer is article-level by default, but every benchmark cutoff also ships an **Event Timeline Dossier**: articles distilled into atomic dated facts that can be deduplicated, linked, and reasoned over independently.
 
 | Stage | Script | What it does |
 |---|---|---|
 | 1 | `articles_to_facts.py` | LLM extraction of (subject, predicate, time, polarity) tuples |
-| 2 | `etd_dedup.py` | Date-bucketed FAISS kNN canonicalisation (G8) |
+| 2 | `etd_dedup.py` | Date-bucketed FAISS kNN canonicalisation (8 sec for 78k facts) |
 | 3 | `etd_link.py` | Per-cutoff linkage to FDs via `primary_article_id` |
-| filter | `etd_filter.py` | Production filter (blocklist + confidence + polarity + no-future) |
-| audit | `etd_audit.py` | Schema, leakage, source distribution check |
 
-Sample ETD fact:
-
-```jsonc
-{
-  "id": "f_3e0613…",
-  "fact": "Apple reaffirmed Q1 FY26 revenue guidance",
-  "time": "2026-01-09",
-  "primary_article_id": "art_a995…",
-  "entities": [{"name": "Apple", "type": "organization"}],
-  "polarity": "asserted",
-  "extraction_confidence": "high",
-  "canonical_id": "f_3e0613…",
-  "linked_fd_ids": ["earn_AAPL_2026-01-30"]
-}
-```
+Headline ablation: B3 articles-only vs B10 hybrid (articles + facts) vs B10b facts-only — paper Table 6.
 
 ---
 
-## Baselines (pick-only, plurality-vote)
+## Baselines on a shared pick-only contract
 
-Every baseline returns one hypothesis label per FD. Multi-sample methods (B4-B7, B9) aggregate via plurality vote, ties broken by `hypothesis_set` order. No probability distributions. Reference: [`benchmark/evaluation/BASELINES.md`](benchmark/evaluation/BASELINES.md).
+Every baseline returns one hypothesis label per FD (no probability distribution). Multi-sample methods aggregate via plurality vote; ties broken by `hypothesis_set` order.
 
 | ID | Method | Calls / FD | Reference |
 |---|---|---|---|
 | B1 | Direct prompting | 1 | Brown et al. 2020 |
 | B2 | Chain-of-Thought (ACH-style) | 1 | Wei et al. 2022 |
 | B3 | RAG-only | 1 | Lewis et al. 2020 |
-| B4 | Self-Consistency | n_samples (4) | Wang et al. 2022 |
-| B5 | Multi-Agent Debate | n_agents × n_rounds | Du et al. 2023 |
-| B6 | Tree of Thoughts | breadth + breadth² | Yao et al. 2023 |
-| B7 | Reflexion | 1 + 2(n_iter − 1) | Shinn et al. 2023 |
-| B8 | Verbalized Confidence | 1 | Lin et al. 2022 (DEPRECATED under pick-only; majority-class reference replaces it) |
-| B9 | Heterogeneous LLM Ensemble | len(configs) | Jiang et al. 2023 |
-
----
-
-## EMR-ACH method
-
-EMR-ACH treats hypothesis selection as inference over two matrices:
-
-- **Analysis matrix** $A_{ij}$: how strongly article $i$ manifests indicator $j$ (via contrastive LLM scoring).
-- **Influence matrix** $I_{jk}$: how strongly indicator $j$ implies hypothesis $k$ (LLM-rated on a fixed ordinal scale).
-
-The score for hypothesis $h$ is
-
-$$ \mathrm{Score}(h) \;=\; \sum_{i}\sum_{j}\, d_j \cdot A_{ij} \cdot I_{jh}, $$
-
-with $d_j$ a **diagnosticity weight** that up-weights indicators whose influence row discriminates between hypotheses. The final pick is $\hat h = \arg\max_h \mathrm{Score}(h)$. A multi-agent adversarial variant assigns one advocate per hypothesis and uses a judge to override the aggregation.
-
-**Component status** (`docs/EMRACH_IMPLEMENTATION_AUDIT.md`):
-
-| Component | Status |
-|---|---|
-| Contrastive indicators | shipped (FD-aware generation; MIRAI-derived prompts retained as fallback) |
-| Influence matrix construction | shipped |
-| Diagnostic weighting | shipped (analysis matrix A; see paper §4.3) |
-| Multi-agent adversarial debate | shipped (single-round advocate / judge) |
-| Hybrid retrieval (MMR + RRF + temporal decay) | partial; full ablation in paper Table 7 |
-
-Multi-round debate, additional retrieval signals, and headline numbers in paper Table 5 are tracked as **Phase-3 run** items in [`docs/V2_2_REFACTOR_BACKLOG.md`](docs/V2_2_REFACTOR_BACKLOG.md) (entry H7).
-
----
-
-## Versions
-
-| Tag | Status | What it is |
-|---|---|---|
-| `v2.1-data-ready` | shipped | 6,294 FDs, 28,945 articles, 81-FD gold subset. Horizon=0 (retrospective evaluation). Tagged at `8ffba6f`. |
-| `v2.2-h14` (in progress) | local | Horizon=14, lookback=30, fb+earnings. Two parallel builds: reuse-first (89 FDs, 291 articles) + CC-News rebuild (89 FDs, 1,209 articles, 5,956 ETD facts). EMR-ACH full pipeline runs end-to-end on the v2.2-h14-ccnews gold subset. |
-| `v2.2-data-ready` (next) | TBD | After Phase-3 batch fills paper Tables 5 / 6 / 7 with real numbers. |
+| B4 | Self-Consistency | $n_s$ | Wang et al. 2022 |
+| B5 | Multi-Agent Debate | $n_a \cdot n_r$ | Du et al. 2023 |
+| B6 | Tree of Thoughts | $b + b^d$ | Yao et al. 2023 |
+| B7 | Reflexion | $1 + 2(n_i-1)$ | Shinn et al. 2023 |
+| B8 | Verbalized Confidence (deprecated) | 1 | Lin et al. 2022 |
+| B9 | Heterogeneous LLM Ensemble | $\lvert c \rvert$ | Jiang et al. 2023 |
+| — | Majority-class reference | 0 | this work |
 
 ---
 
 ## Quickstart
 
 ```bash
-# Build the benchmark for a given cutoff (one command, full pipeline)
+# Build a benchmark cutoff (one command, full pipeline)
 python scripts/build_benchmark.py --cutoff 2026-01-01 \
     --benchmarks forecastbench,earnings \
     --horizon-days 14 --lookback-days 30 \
@@ -227,111 +140,78 @@ python scripts/build_benchmark.py --cutoff 2026-01-01 \
 python scripts/build_gold_subset.py --cutoff 2026-01-01 \
     --min-articles 5 --min-distinct-days 3 --min-source-diversity 2
 
-# Smoke-test a baseline (pick-only, sync, 3 FDs)
+# Run EMR-ACH on the gold subset
+python scripts/eval/emrach_on_gold.py \
+    --gold-dir benchmark/data/2026-01-01-h14-ccnews-gold \
+    --mode batch
+
+# Smoke a baseline
 cd benchmark && python -m evaluation.baselines.runner \
     --method b1_direct \
     --fds data/2026-01-01-gold/forecasts.jsonl \
     --articles data/2026-01-01-gold/articles.jsonl \
     --smoke 3 --sync
 
-# Full Batch API run for the baseline battery (~$0.30 for 10 methods x ~80 FDs)
+# Full B1-B9 Batch API run (≈ $0.30 for 10 methods × 80 FDs)
 python -m evaluation.baselines.runner --method b1_direct --batch ...
-
-# Run EMR-ACH on the v2.2 gold subset
-python scripts/eval/emrach_on_gold.py \
-    --gold-dir benchmark/data/2026-01-01-h14-ccnews-gold \
-    --mode batch
 ```
-
-For the v2.2 CC-News full-pool path, see [`docs/v2_2_ccnews_build.md`](docs/v2_2_ccnews_build.md).
 
 ---
 
-## Reproducing the data
+## Repository layout
 
-The pipeline is fully reproducible from the public sources:
+```
+ACH/
+├── paper/index.html                    ← HTML paper (Tables 1-7, Appendices A-G)
+├── paper/figures/                      ← 8 paper figures, embedded in §3 + §6
+├── docs/PROJECT_SPEC.md                ← single source of truth
+├── docs/V2_2_REFACTOR_BACKLOG.md       ← 80-item living backlog
+├── docs/FORECAST_DOSSIER.md            ← FD schema + invariants
+├── docs/EMRACH_IMPLEMENTATION_AUDIT.md ← method-side component audit
+├── benchmark/
+│   ├── DATASET.md                      ← schema + EDA + horizon/lookback config
+│   ├── configs/                        ← default_config.yaml, baselines.yaml
+│   ├── schema/                         ← FD + article + ETD JSON Schemas
+│   ├── evaluation/baselines/           ← B1..B9 + runner
+│   └── data/{cutoff}/ + {cutoff}-gold/ ← published benchmark + gold subset
+├── src/
+│   ├── pipeline/                       ← EMR-ACH method modules (indicators, retrieval, multi-agent)
+│   └── common/openai_embeddings.py     ← Batch API helper
+├── scripts/                            ← every pipeline stage as a CLI
+└── tests/                              ← invariants + leakage regression
+```
+
+---
+
+## Versions
+
+| Tag | Status | What it is |
+|---|---|---|
+| `v2.1-data-ready` | shipped | 6,294 FDs, 28,945 articles, 81-FD gold. Horizon=0 retrospective. Tagged `8ffba6f`. |
+| `v2.2-h14` (in progress) | local | Horizon=14, lookback=30, fb+earnings. Reuse-first (89 FDs) + CC-News rebuild (89 FDs, 1,209 articles, 5,956 ETD facts). EMR-ACH runs end-to-end on the v2.2 gold subset. |
+| `v2.2-data-ready` (next) | TBD | After Phase-3 batch fills paper Tables 5 / 6 / 7 with real numbers. |
+
+---
+
+## Reproducing
+
+The pipeline is fully reproducible from public sources:
 
 - **forecastbench** ← upstream ForecastBench repo (resolved questions only).
 - **gdelt-cameo** ← GDELT 2.0 KG (publicly hosted).
 - **earnings** ← yfinance + Finnhub + EDGAR + GDELT-slug + NYT/Guardian editorial.
 - **CC-News** ← Common Crawl `data.commoncrawl.org/crawl-data/CC-NEWS/{YYYY}/{MM}/`.
 
-Every FD carries `metadata.source_*` fields documenting where each piece came from. Article-level provenance is in `articles.jsonl[*].provenance`.
-
-The published `benchmark/data/2026-01-01/` is the canonical dataset for v2.1; the gold subset under it is self-contained and downstream-friendly (schema + examples + LICENSE + CITATION inline).
-
----
-
-## Project layout
-
-```
-ACH/
-├── benchmark/
-│   ├── README.md            ← user-facing benchmark docs
-│   ├── DATASET.md           ← schema + EDA + horizon/lookback config
-│   ├── RECREATE.md          ← step-by-step rebuild instructions
-│   ├── configs/             ← default_config.yaml, leakage_probe_config.yaml, baselines.yaml
-│   ├── schema/              ← FD + article + ETD JSON Schemas
-│   ├── evaluation/
-│   │   ├── BASELINES.md     ← per-method reference
-│   │   └── baselines/       ← B1..B9 implementations + runner
-│   └── data/
-│       ├── 2026-01-01/             ← v2.1 publish (tagged)
-│       ├── 2026-01-01-gold/        ← v2.1 gold subset
-│       ├── 2026-01-01-h14/         ← v2.2 reuse-first
-│       └── 2026-01-01-h14-ccnews/  ← v2.2 CC-News rebuild
-├── docs/
-│   ├── PROJECT_SPEC.md             ← single source of truth
-│   ├── V2_2_REFACTOR_BACKLOG.md    ← 80-item living backlog
-│   ├── V2_2_ARCHITECTURE.md        ← pipeline contracts
-│   ├── FORECAST_DOSSIER.md         ← FD schema + invariants
-│   ├── PIPELINE.md                 ← stage-by-stage reference
-│   ├── EMRACH_IMPLEMENTATION_AUDIT.md  ← method-side gap audit
-│   └── V2_2_EVAL_PLAN.md           ← ready-to-fire Batch API commands
-├── paper/
-│   └── index.html                  ← HTML paper (7 tables, 7 appendices)
-├── scripts/                        ← every pipeline stage as a CLI
-├── src/
-│   ├── common/openai_embeddings.py ← Batch API helper
-│   └── pipeline/                   ← (in-progress) EMR-ACH method modules
-└── tests/                          ← pytest suites for invariants + leakage
-```
-
----
-
-## Design choices worth flagging
-
-- **No GPU required.** Every component routes through the OpenAI Batch API or CPU pipelines. The repo can run end-to-end on a laptop given disk + bandwidth for CC-News.
-- **OpenAI embeddings, not SBERT.** `text-embedding-3-small` (1536-d, L2-normalized). Auto-chunked above 50k cap, parallel-polled across chunks, salvage-on-cancel + LOCAL-COMPLETED short-circuit for offline-synced shards. See [`src/common/openai_embeddings.py`](src/common/openai_embeddings.py).
-- **G8 date-bucketed FAISS kNN.** ETD Stage-2 dedup runs in ~8 seconds for 78k facts vs ~15 minutes for the brute-force baseline. Exact recall within the date-window constraint; 6/6 parity tests pass.
-- **Leakage is a hard test.** Per-FD assertions at publish time (`step_publish` dangling-ref dump), at gold build (re-asserted), and at evaluation (regression tests).
-- **Pick-only contract.** Removes the calibration confound; B8 (verbalized confidence) is deprecated and replaced by a majority-class reference in the paper.
+No GPU required. Every stage routes through OpenAI Batch API or CPU pipelines (FAISS-CPU). Total reproducibility budget per cutoff-month is under $10.
 
 ---
 
 ## Citation
 
-Citation BibTeX will be added at v2.2 release. For now:
-
 ```
-EMR-ACH Forecasting Benchmark.
-ApartsinProjects, 2026.
-https://github.com/ApartsinProjects/EMR-ACH
-Tag: v2.1-data-ready
+Remez B., Aperstein Y., Apartsin A.
+Evidence Matrix Reasoning: Structured Hypothesis Selection via Analysis of Competing Hypotheses.
+2026. https://github.com/ApartsinProjects/EMR-ACH (tag v2.1-data-ready)
 ```
 
----
-
-## License
-
-Code: MIT. Third-party data (GDELT, Yahoo Finance, ForecastBench upstream, Common Crawl, NYT/Guardian editorial) retains its original upstream licence; users are responsible for respecting source terms.
-
----
-
-## See also
-
-- [`docs/PROJECT_SPEC.md`](docs/PROJECT_SPEC.md) — full project specification + open decisions for each session.
-- [`docs/V2_2_REFACTOR_BACKLOG.md`](docs/V2_2_REFACTOR_BACKLOG.md) — 80-item living backlog with priorities P0/P1/P2.
-- [`paper/index.html`](paper/index.html) — HTML paper (Tables, Appendices A-G; Appendix F for baseline reference, G for worked examples).
-- [`benchmark/README.md`](benchmark/README.md) — user-facing benchmark documentation.
-- [`benchmark/evaluation/BASELINES.md`](benchmark/evaluation/BASELINES.md) — per-method reference with citations.
+Code: MIT. Third-party data (GDELT, Yahoo Finance, ForecastBench upstream, Common Crawl, NYT, Guardian) retains its original upstream licence.
