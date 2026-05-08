@@ -7,7 +7,7 @@
 **EMR-ACH** turns LLM forecasting into a structured analysis-matrix problem. Instead of asking a model to pick a hypothesis from a question and a bag of articles in a single forward pass, we decompose the task into three small, auditable steps that mirror Heuer's *Analysis of Competing Hypotheses* method from the intelligence community.
 
 > **Authors.** Ben Remez, Yehudit Aperstein, Alexander Apartsin
-> **Paper.** [`paper/index.html`](paper/index.html)
+> **Paper.** [apartsinprojects.github.io/EMR-ACH/paper/index.html](https://apartsinprojects.github.io/EMR-ACH/paper/index.html)
 > **Tag.** `v2.1-data-ready`
 
 ---
