@@ -6,7 +6,7 @@
 
 **EMR-ACH** turns LLM forecasting into a structured analysis-matrix problem. Instead of asking a model to pick a hypothesis from a question and a bag of articles in a single forward pass, we decompose the task into three small, auditable steps that mirror Heuer's *Analysis of Competing Hypotheses* method from the intelligence community.
 
-> **Authors.** Ben Remez, Yehudit Aperstein, Alexander Apartsin
+> **Authors.** Yehudit Aperstein, Ben Remez, Alexander Apartsin
 > **Paper.** [apartsinprojects.github.io/EMR-ACH/paper/index.html](https://apartsinprojects.github.io/EMR-ACH/paper/index.html)
 > **Tag.** `v2.1-data-ready`
 
@@ -209,7 +209,7 @@ No GPU required. Every stage routes through OpenAI Batch API or CPU pipelines (F
 ## Citation
 
 ```
-Remez B., Aperstein Y., Apartsin A.
+Aperstein Y., Remez B., Apartsin A.
 Evidence Matrix Reasoning: Structured Hypothesis Selection via Analysis of Competing Hypotheses.
 2026. https://github.com/ApartsinProjects/EMR-ACH (tag v2.1-data-ready)
 ```
