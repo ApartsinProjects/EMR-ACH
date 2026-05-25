@@ -103,7 +103,7 @@ caption{caption-side:bottom;font-size:9pt;color:var(--cap);
 </p>
 
 <p>
-  Modern LLM approaches collapse this selection into a single forward pass or a free-form reasoning chain: the model must simultaneously enumerate the hypotheses, retrieve relevant evidence, weigh competing explanations, and commit to one. Human cognitive research shows that even trained experts struggle with this type of unstructured multi-hypothesis reasoning [14], which is why the intelligence community developed <strong>Analysis of Competing Hypotheses (ACH)</strong> [1]: a structured analytical technique that decomposes the task into ordered, bias-resistant steps with explicit evidence tracking.
+  Modern LLM approaches collapse this selection into a single forward pass or a free-form reasoning chain: the model must simultaneously enumerate the hypotheses, retrieve relevant evidence, weigh competing explanations, and commit to one. Human cognitive research shows that even trained experts struggle with this type of unstructured multi-hypothesis reasoning [13], which is why the intelligence community developed <strong>Analysis of Competing Hypotheses (ACH)</strong> [1]: a structured analytical technique that decomposes the task into ordered, bias-resistant steps with explicit evidence tracking.
 </p>
 
 <p>
@@ -149,7 +149,7 @@ caption{caption-side:bottom;font-size:9pt;color:var(--cap);
 
 <h3>2.1 LLM-Based Event Forecasting</h3>
 <p>
-  Early work on open-ended forecasting with language models focused on QA formats grounded in news: ForecastQA [17] introduced multiple-choice future-event QA, and Autocast [15] pioneered automated forecasting on binary/numeric/multiple-choice Metaculus and GJOpen questions by combining LLM reading with a news corpus. These approaches established the basic recipe (question → retrieve → reason → predict) but treated prediction as an ad-hoc LLM call rather than an inference procedure with explicit evidence structure.
+  Early work on open-ended forecasting with language models focused on QA formats grounded in news: ForecastQA [17] introduced multiple-choice future-event QA, and Autocast [14] pioneered automated forecasting on binary/numeric/multiple-choice Metaculus and GJOpen questions by combining LLM reading with a news corpus. These approaches established the basic recipe (question → retrieve → reason → predict) but treated prediction as an ad-hoc LLM call rather than an inference procedure with explicit evidence structure.
 </p>
 <p>
   Geopolitical event forecasting has been studied most extensively against GDELT- and ICEWS-derived benchmarks. <strong>MIRAI</strong> [3] is the most directly comparable structured evaluation: it formalizes forecasting as quad-class CAMEO relation prediction between country pairs, provides an oracle news corpus, and reports a best-performing ReAct agent at 44.2% F1 on Nov-2023 test events. Its methodology, however, has three limitations that our benchmark is designed to address:
@@ -160,15 +160,15 @@ caption{caption-side:bottom;font-size:9pt;color:var(--cap);
   <li><strong>Low-distinguishability classes.</strong> MIRAI's quad-class target (VC / MC / VK / MK) has two semantically-close pairs that even competent LLMs confuse systematically: Verbal Cooperation vs. Material Cooperation, and Verbal Conflict vs. Material Conflict. In our pilot experiments, gpt-4o-mini collapses 76% of Verbal Cooperation FDs onto Material Cooperation regardless of article evidence. EMR-ACH's GDELT-CAMEO label is a <strong>3-class ordinal intensity</strong> (Peace / Tension / Violence) mapped directly from CAMEO root codes (§3.3, Table 1); class boundaries are interpretable to both humans and LLMs, and baselines make sensible predictions without the confusable-pair collapse.</li>
 </ol>
 <p>
-  Tang et al. [16] attack a similar problem with iterative news-grounded reasoning, and Xie et al. [15] build a multi-stage news-to-forecast pipeline. Abolghasemi et al. [12] introduce ThinkTank-ME, a domain-specialized fine-tuned expert model for Middle East forecasting. EMR-ACH differs fundamentally from all of these: no fine-tuning, uniform task across three heterogeneous domains (geopolitics, finance, prediction markets), explicit horizon + Comply/Surprise primary target, and evidence-matrix aggregation rather than free-form reasoning.
+  Gwak et al. [20] build a reliable text-based dataset for international-event forecasting, and Xie et al. [19] build a multi-stage news-to-forecast pipeline. Li et al. [12] introduce ThinkTank-ME, a domain-specialized multi-expert framework for Middle East forecasting. EMR-ACH differs fundamentally from all of these: no fine-tuning, uniform task across three heterogeneous domains (geopolitics, finance, prediction markets), explicit horizon + Comply/Surprise primary target, and evidence-matrix aggregation rather than free-form reasoning.
 </p>
 <p>
-  A second line of work targets <em>market-calibrated</em> prediction where human crowd forecasts are available. ForecastBench [4] provides a dynamic benchmark of ~1,000 continuously-updated questions from Metaculus, Manifold, Polymarket, Infer, plus algorithmic sources. Halawi et al. [5] reach near human-level performance via aggressive retrieval, news summarization, and ensembling. Schoenegger et al. [16] run a Metaculus-style tournament and find LLMs systematically overconfident. We use ForecastBench's prediction-market subset as one of three evaluation benchmarks, treating each question as a binary Yes/No selection task; we do not compare against crowd probabilities on a calibration axis, since our system emits a single pick.
+  A second line of work targets <em>market-calibrated</em> prediction where human crowd forecasts are available. ForecastBench [4] provides a dynamic benchmark of ~1,000 continuously-updated questions from Metaculus, Manifold, Polymarket, Infer, plus algorithmic sources. Halawi et al. [5] reach near human-level performance via aggressive retrieval, news summarization, and ensembling. Schoenegger et al. [15] run a Metaculus-style tournament and find LLMs systematically overconfident. We use ForecastBench's prediction-market subset as one of three evaluation benchmarks, treating each question as a binary Yes/No selection task; we do not compare against crowd probabilities on a calibration axis, since our system emits a single pick.
 </p>
 
 <h3>2.2 Structured Reasoning Paradigms for LLMs</h3>
 <p>
-  Chain-of-thought [6], tree-of-thought [8], and program-of-thought [13] prompting encourage LLMs to externalize reasoning steps. ReAct [7] interleaves reasoning and information retrieval. Self-consistency [9] aggregates multiple CoT chains (in our pick-only framing, via majority vote over the final picks). All of these generate reasoning structure <em>freely</em>. EMR-ACH takes the opposite approach: structure is <em>imposed</em> from a validated human analytical framework, with each reasoning step defined by ACH methodology rather than by the LLM's preferences. This makes the procedure auditable and reproducible.
+  Chain-of-thought [6], tree-of-thought [8], and program-of-thought [16] prompting encourage LLMs to externalize reasoning steps. ReAct [7] interleaves reasoning and information retrieval. Self-consistency [9] aggregates multiple CoT chains (in our pick-only framing, via majority vote over the final picks). All of these generate reasoning structure <em>freely</em>. EMR-ACH takes the opposite approach: structure is <em>imposed</em> from a validated human analytical framework, with each reasoning step defined by ACH methodology rather than by the LLM's preferences. This makes the procedure auditable and reproducible.
 </p>
 
 <h3>2.3 Multi-Agent LLM Debate</h3>
@@ -178,7 +178,7 @@ caption{caption-side:bottom;font-size:9pt;color:var(--cap);
 
 <h3>2.4 Human Cognitive Bias and Structured Analytic Techniques</h3>
 <p>
-  Decades of behavioral research document that unaided human judgment about uncertain events is systematically biased. Kahneman and Tversky's dual-process account [14] distinguishes fast intuitive reasoning (System 1), prone to heuristics, from slow deliberative reasoning (System 2). Biases relevant to hypothesis selection include <em>confirmation bias</em>, <em>anchoring</em>, <em>availability</em>, and <em>representativeness</em>. Tetlock's Expert Political Judgment study showed that unaided political experts perform barely better than chance on multi-year forecasts, while trained forecasters using structured processes perform substantially better.
+  Decades of behavioral research document that unaided human judgment about uncertain events is systematically biased. Kahneman and Tversky's dual-process account [13] distinguishes fast intuitive reasoning (System 1), prone to heuristics, from slow deliberative reasoning (System 2). Biases relevant to hypothesis selection include <em>confirmation bias</em>, <em>anchoring</em>, <em>availability</em>, and <em>representativeness</em>. Tetlock's Expert Political Judgment study showed that unaided political experts perform barely better than chance on multi-year forecasts, while trained forecasters using structured processes perform substantially better.
 </p>
 <p>
   The intelligence community's response is the family of <strong>Structured Analytic Techniques (SATs)</strong> catalogued by Pherson &amp; Heuer. SATs externalize assumptions, force consideration of alternatives, and create an auditable reasoning trail. <strong>Analysis of Competing Hypotheses (ACH)</strong> [1] is distinctive among SATs in being explicitly <em>matrix-based</em>: hypotheses as columns, evidence as rows, scoring consistency/inconsistency in each cell, selecting the hypothesis with least disconfirming evidence. Dhami et al. [2] conduct a controlled evaluation of ACH versus unaided judgment and find that, when applied rigorously, ACH reduces selection bias. PARC ACH 2.0 and DECIDE are pre-LLM software implementations.
@@ -710,19 +710,21 @@ $$
   <li>Ye, C., Hu, Z., Deng, Y., Huang, Z., Ma, M.D., Zhu, Y., Wang, W. (2024). MIRAI: Evaluating LLM Agents for Event Forecasting. arXiv:2407.01231.</li>
   <li>Karger, E., Bastani, H., Chen, Y., Jacobs, Z., Halawi, D., Zhang, F., Tetlock, P.E. (2025). ForecastBench: A Dynamic Benchmark of AI Forecasting Capabilities. <em>ICLR 2025.</em> arXiv:2409.19839.</li>
   <li>Halawi, D., Zhang, F., Chen, Y., Steinhardt, J. (2024). Approaching Human-Level Forecasting with Language Models. <em>NeurIPS 2024.</em> arXiv:2402.18563.</li>
-  <li>Wei, J., et al. (2022). Chain-of-Thought Prompting Elicits Reasoning in LLMs. <em>NeurIPS 2022.</em></li>
+  <li>Wei, J., et al. (2022). Chain-of-Thought Prompting Elicits Reasoning in Large Language Models. <em>NeurIPS 2022.</em> arXiv:2201.11903.</li>
   <li>Yao, S., et al. (2022). ReAct: Synergizing Reasoning and Acting in Language Models. <em>ICLR 2023.</em> arXiv:2210.03629.</li>
   <li>Yao, S., et al. (2023). Tree of Thoughts: Deliberate Problem Solving with Large Language Models. <em>NeurIPS 2023.</em> arXiv:2305.10601.</li>
   <li>Wang, X., et al. (2022). Self-Consistency Improves Chain of Thought Reasoning in Language Models. <em>ICLR 2023.</em> arXiv:2203.11171.</li>
   <li>Du, Y., et al. (2023). Improving Factuality and Reasoning in Language Models through Multiagent Debate. <em>ICML 2024.</em> arXiv:2305.14325.</li>
-  <li>AutoCast++: Enhancing World Event Prediction with Zero-shot Context Retrieval. arXiv:2310.01880.</li>
+  <li>Zhao, X., Zhao, S., Yu, H., Zhang, L., Li, Q. (2026). AgentCDM: Enhancing Multi-Agent Collaborative Decision-Making via ACH-Inspired Structured Reasoning. <em>AAAI 2026.</em> arXiv:2508.11995. DOI:10.1609/aaai.v40i41.40803.</li>
+  <li>Li, H., Chang, H., Ma, Y., Bin, Y., Yang, Y., Ng, S.-K. (2026). ThinkTank-ME: A Multi-Expert Framework for Middle East Event Forecasting. <em>ACM Web Conference 2026.</em> DOI:10.1145/3774904.3792905.</li>
+  <li>Kahneman, D. (2011). <em>Thinking, Fast and Slow.</em> Farrar, Straus and Giroux.</li>
+  <li>Zou, A., Xiao, T., Jia, R., et al. (2022). Forecasting Future World Events with Neural Networks. <em>NeurIPS 2022 (Datasets and Benchmarks).</em> arXiv:2206.15474.</li>
   <li>Schoenegger, P., Park, I., Rajagopalan, S., et al. (2024). Large Language Model Prediction Capabilities: Evidence from a Real-World Forecasting Tournament. arXiv:2310.13014.</li>
-  <li>Chen, W., et al. (2022). Program of Thoughts Prompting: Disentangling Computation from Reasoning. arXiv:2211.12588.</li>
-  <li>Liang, T., et al. (2023). Encouraging Divergent Thinking in Large Language Models through Multi-Agent Debate. arXiv:2305.19118.</li>
-  <li>Xie, J., et al. (2024). From News to Forecast: Iterative Event Reasoning in LLM-Based Agents. <em>NeurIPS 2024.</em> arXiv:2409.17515.</li>
-  <li>Tang, H., et al. (2024). Forecasting Future International Events with Large Language Models. <em>ACL Findings 2024.</em> arXiv:2411.14042.</li>
+  <li>Chen, W., et al. (2022). Program of Thoughts Prompting: Disentangling Computation from Reasoning for Numerical Reasoning Tasks. arXiv:2211.12588.</li>
   <li>Jin, W., et al. (2021). ForecastQA: A Question Answering Challenge for Event Forecasting with Temporal Text Data. <em>ACL 2021.</em> arXiv:2005.00792.</li>
   <li>Smit, A.P., Duckworth, P., Grinsztajn, N., et al. (2024). Should we be going MAD? A Look at Multi-Agent Debate Strategies for LLMs. <em>ICML 2024.</em> arXiv:2311.17371.</li>
+  <li>Xie, J., et al. (2024). From News to Forecast: Iterative Event Reasoning in LLM-Based Agents. <em>NeurIPS 2024.</em> arXiv:2409.17515.</li>
+  <li>Gwak, D., Park, J., Park, M., Park, C., Lee, H., Choi, E., Choo, J. (2024). Forecasting Future International Events: A Reliable Dataset for Text-Based Event Modeling. <em>EMNLP Findings 2024.</em> DOI:10.18653/v1/2024.findings-emnlp.526.</li>
 </ol>
 </div>
 
